@@ -55,17 +55,32 @@ services:
     depends_on:
       - backend
 
-  # Public HTTPS tunnel to the frontend, e.g. for scanning table QR codes from a phone.
+  # Production build of the frontend (nginx), served through the tunnel.
+  # Rebuild after code changes: docker compose --profile tunnel up -d --build web
+  web:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.prod
+      args:
+        VITE_PUBLIC_BASE_URL: https://${NGROK_URL:?set NGROK_URL in .env}
+    restart: unless-stopped
+    profiles: ["tunnel"]
+    ports:
+      - "${WEB_PORT:-5181}:80"
+    depends_on:
+      - backend
+
+  # Public HTTPS tunnel to the production build, e.g. for scanning table QR codes from a phone.
   # Start with: docker compose --profile tunnel up -d
   ngrok:
     image: ngrok/ngrok:3-alpine
     restart: unless-stopped
     profiles: ["tunnel"]
-    command: http frontend:5173 --url=https://${NGROK_URL:?set NGROK_URL in .env} --log=stdout
+    command: http web:80 --url=https://${NGROK_URL:?set NGROK_URL in .env} --log=stdout
     environment:
       NGROK_AUTHTOKEN: ${NGROK_AUTHTOKEN:?set NGROK_AUTHTOKEN in .env}
     depends_on:
-      - frontend
+      - web
 
 volumes:
   mysql_data:
