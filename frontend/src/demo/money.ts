@@ -1,18 +1,18 @@
-import { SERVICE_CHARGE_RATE, VAT_RATE } from './mockData'
+import { GST_RATE } from './mockData'
 import type { Order } from './types'
 
-const thb = new Intl.NumberFormat('th-TH', { style: 'currency', currency: 'THB' })
-const thbWhole = new Intl.NumberFormat('th-TH', { style: 'currency', currency: 'THB', maximumFractionDigits: 0 })
+const aud = new Intl.NumberFormat('en-AU', { style: 'currency', currency: 'AUD' })
+const audWhole = new Intl.NumberFormat('en-AU', { style: 'currency', currency: 'AUD', maximumFractionDigits: 0 })
 
-/** Format an amount in satang as THB; whole baht are shown without decimals */
-export function formatTHB(satang: number): string {
-  return satang % 100 === 0 ? thbWhole.format(satang / 100) : thb.format(satang / 100)
+/** Format an amount in cents as AUD; whole dollars are shown without decimals */
+export function formatAUD(cents: number): string {
+  return cents % 100 === 0 ? audWhole.format(cents / 100) : aud.format(cents / 100)
 }
 
 export type Bill = {
   subtotal: number
-  serviceCharge: number
-  vat: number
+  /** GST already included in the subtotal (prices are GST-inclusive) */
+  gst: number
   total: number
   itemCount: number
 }
@@ -27,7 +27,6 @@ export function calculateBill(orders: Order[]): Bill {
       itemCount += item.quantity
     }
   }
-  const serviceCharge = Math.round(subtotal * SERVICE_CHARGE_RATE)
-  const vat = Math.round((subtotal + serviceCharge) * VAT_RATE)
-  return { subtotal, serviceCharge, vat, total: subtotal + serviceCharge + vat, itemCount }
+  const gst = Math.round((subtotal * GST_RATE) / (1 + GST_RATE))
+  return { subtotal, gst, total: subtotal, itemCount }
 }

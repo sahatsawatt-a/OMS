@@ -94,7 +94,7 @@ Priority: **H** first release, **N** normal, **L** later.
 - Diner can pay on their phone with Stripe (card data never reaches our servers); staff can record cash or card-terminal payment instead.
 - A Stripe payment counts only after a signature-verified webhook.
 - When fully paid, the session closes, the QR stops working and the table becomes free.
-- *Assumptions:* pay once at the end of the meal; THB; 10% service charge and 7% VAT added on top.
+- *Assumptions:* pay once at the end of the meal; AUD; menu prices include 10% GST (shown on the bill); no service charge.
 
 **REQ-10 Admins can refund fully or partially through Stripe (N)**
 
@@ -110,7 +110,7 @@ Priority: **H** first release, **N** normal, **L** later.
 - **REQ-13 Stack (constraint):** React + TypeScript frontend, Python (FastAPI) backend, Stripe, MySQL; Docker Compose for local dev.
 - **REQ-29 Phase 1 is a frontend-only demo with mock data (constraint).** See section 7.
 - **REQ-14 Security:** no card data on our servers; verified Stripe webhooks; secrets only in env vars; HTTPS; backend input validation. Session tokens unguessable and useless once closed.
-- **REQ-15 Money and records:** amounts as integer satang with currency; orders/payments never hard-deleted; schema changes via migrations; daily backups.
+- **REQ-15 Money and records:** amounts as integer cents with currency; orders/payments never hard-deleted; schema changes via migrations; daily backups.
 - **Usability (RQ-6):** guest ordering works on phone (single column), iPad portrait (grid of dish cards) and iPad landscape / PC (menu grid with the order always visible in a side panel); staff app works on tablet and phone; kitchen display readable at a distance.
 - **Real-time:** order and status changes reach other screens within ~2 seconds (WebSocket/SSE in the real system).
 
@@ -133,7 +133,7 @@ Built in `frontend/` with mock data; no backend calls.
 ## 8. Open questions
 
 1. **Payment timing:** pay at the end of the meal, or pay for each order before it goes to the kitchen?
-2. **Service charge and VAT:** is there a service charge (10%?), and are menu prices VAT-inclusive? Tax invoices needed?
+2. **Surcharges and GST:** any Sunday/public-holiday or card surcharge? Are tax invoices needed (required on request for sales over $82.50 incl. GST)?
 3. **Split bill** between diners?
 4. **Payment methods:** cards, PromptPay, cash?
 5. **QR delivery:** printed slip, or shown on a staff tablet / table stand?

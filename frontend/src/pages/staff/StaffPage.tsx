@@ -5,7 +5,7 @@ import { formatElapsed, formatTime, sessionUrl, useNow } from '../../components/
 import { Icon } from '../../components/Icon'
 import { Sheet, StatusBadge } from '../../components/shared'
 import { RESTAURANT_NAME, TABLES } from '../../demo/mockData'
-import { calculateBill, formatTHB } from '../../demo/money'
+import { calculateBill, formatAUD } from '../../demo/money'
 import { actions, useDemoState } from '../../demo/store'
 import type { Order, PaymentMethod, Table, TableSession } from '../../demo/types'
 import './staff.css'
@@ -96,7 +96,7 @@ export default function StaffPage() {
                     <span>
                       {v.session.guests} guests · {formatElapsed(v.session.openedAt, now).replace(' ago', '')}
                     </span>
-                    {bill.total > 0 ? <strong>{formatTHB(bill.total)}</strong> : <span>No orders yet</span>}
+                    {bill.total > 0 ? <strong>{formatAUD(bill.total)}</strong> : <span>No orders yet</span>}
                   </div>
                 ) : (
                   <div className="table-bottom muted">Tap to seat guests</div>
@@ -269,12 +269,12 @@ function TableDetail({ view, onShowQr, onClose }: { view: TableView; onShowQr: (
       <footer className="detail-footer">
         <div className="row between">
           <span className="muted">
-            Subtotal {formatTHB(bill.subtotal)} + service {formatTHB(bill.serviceCharge)} + VAT {formatTHB(bill.vat)}
+            Includes GST {formatAUD(bill.gst)}
           </span>
         </div>
         <div className="row between total">
           <span>Total</span>
-          <span>{formatTHB(bill.total)}</span>
+          <span>{formatAUD(bill.total)}</span>
         </div>
         <button className="btn btn-primary btn-block" onClick={() => setSettling(true)}>
           Settle bill & close table
@@ -310,7 +310,7 @@ function SettleSheet({
 }) {
   return (
     <Sheet title={`Settle Table ${tableNumber}`} onClose={onClose}>
-      <div className="settle-amount">{formatTHB(amount)}</div>
+      <div className="settle-amount">{formatAUD(amount)}</div>
       <p className="muted small">How did the guests pay? Closing the session frees the table and its QR stops working.</p>
       <div className="settle-methods">
         <button className="btn btn-outline" onClick={() => onSettle('cash')}>

@@ -43,11 +43,11 @@ def test_create_intent_requires_keys(no_stripe_keys):
 
 
 def test_create_intent_rejects_amount_below_stripe_minimum(stripe_keys):
-    res = create_intent(500)
+    res = create_intent(40)
     assert res.status_code == 422
 
 
-def test_create_intent_calls_stripe_in_thb(stripe_keys, monkeypatch):
+def test_create_intent_calls_stripe_in_aud(stripe_keys, monkeypatch):
     calls = {}
 
     def fake_create(**kwargs):
@@ -55,11 +55,11 @@ def test_create_intent_calls_stripe_in_thb(stripe_keys, monkeypatch):
         return SimpleNamespace(id="pi_123", client_secret="pi_123_secret_abc")
 
     monkeypatch.setattr("stripe.PaymentIntent.create", fake_create)
-    res = create_intent(51553, table_number=2)
+    res = create_intent(8650, table_number=2)
     assert res.status_code == 200
     assert res.json() == {"id": "pi_123", "client_secret": "pi_123_secret_abc"}
-    assert calls["amount"] == 51553
-    assert calls["currency"] == "thb"
+    assert calls["amount"] == 8650
+    assert calls["currency"] == "aud"
     assert calls["metadata"] == {"table_number": "2", "session_token": "abcdefgh"}
 
 
