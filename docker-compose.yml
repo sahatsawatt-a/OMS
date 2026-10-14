@@ -22,7 +22,10 @@ services:
   backend:
     build: ./backend
     restart: unless-stopped
+    # Stripe keys can live in the root .env or backend/.env (backend/.env wins)
     env_file:
+      - path: ./.env
+        required: false
       - path: ./backend/.env
         required: false
     environment:
@@ -50,6 +53,17 @@ services:
       - /app/node_modules
     depends_on:
       - backend
+
+  # Public HTTPS tunnel to the frontend, e.g. for scanning table QR codes from a phone.
+  # Start with: docker compose --profile tunnel up -d
+  ngrok:
+    image: ngrok/ngrok:3-alpine
+    profiles: ["tunnel"]
+    command: http frontend:5173 --url=https://${NGROK_URL:?set NGROK_URL in .env} --log=stdout
+    environment:
+      NGROK_AUTHTOKEN: ${NGROK_AUTHTOKEN:?set NGROK_AUTHTOKEN in .env}
+    depends_on:
+      - frontend
 
 volumes:
   mysql_data:

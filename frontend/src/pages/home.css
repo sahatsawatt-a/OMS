@@ -1,0 +1,124 @@
+.home {
+  min-height: 100vh;
+}
+.home-hero {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 64px 20px 32px;
+}
+.home-eyebrow {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: var(--muted);
+}
+.home-hero h1 {
+  font-family: var(--font-display);
+  font-weight: 500;
+  font-size: clamp(2.2rem, 7vw, 3.2rem);
+  letter-spacing: -0.02em;
+  margin-top: 8px;
+}
+.home-hero p {
+  color: var(--muted);
+  margin: 10px 0 0;
+  max-width: 520px;
+}
+
+.home-screens {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 12px;
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 0 20px;
+}
+.screen-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 20px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  text-decoration: none;
+  color: var(--text);
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+a.screen-card:hover {
+  border-color: var(--border-strong);
+  box-shadow: var(--shadow);
+}
+.screen-card strong {
+  font-weight: 600;
+  margin-top: 6px;
+}
+.screen-card span:not(.screen-icon) {
+  color: var(--muted);
+  font-size: 0.88rem;
+}
+.screen-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  display: grid;
+  place-items: center;
+}
+.open-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+.open-links a {
+  font-size: 0.82rem;
+  font-weight: 500;
+  color: var(--text);
+  text-decoration: none;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  padding: 5px 10px;
+}
+.open-links a:hover {
+  background: var(--surface-2);
+}
+
+.home-flow {
+  max-width: 960px;
+  margin: 48px auto 64px;
+  padding: 0 20px;
+}
+.home-flow h2 {
+  font-family: var(--font-display);
+  font-weight: 500;
+  font-size: 1.4rem;
+  margin-bottom: 16px;
+}
+.home-flow ol {
+  list-style: none;
+  counter-reset: step;
+  padding: 0;
+  margin: 0 0 20px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 24px;
+}
+.home-flow li {
+  counter-increment: step;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 0.9rem;
+  padding-top: 14px;
+  border-top: 1px solid var(--border-strong);
+}
+.home-flow li::before {
+  content: '0' counter(step);
+  font-family: var(--font-display);
+  font-size: 0.95rem;
+  color: var(--accent);
+}
+.home-flow li span {
+  color: var(--muted);
+}

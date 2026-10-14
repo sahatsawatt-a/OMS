@@ -1,6 +1,34 @@
 # OMS — Ordering Management System
 
-An ordering management system: customers browse products, place orders and pay online; staff manage the catalogue, orders and fulfilment.
+Restaurant ordering with table QR codes. When guests sit down, staff open a **table session** and show a QR code; guests scan it, order from their phone in rounds, the kitchen sees the orders live, and the bill is paid by phone (Stripe) or at the table.
+
+> **Current phase: frontend demo.** The React app runs on mock data stored in the browser, so you can click through the whole flow without the backend. The FastAPI + MySQL backend is scaffolded but not implemented yet.
+
+## Try the demo (fastest)
+
+```bash
+cd frontend
+npm install
+npm run dev          # http://localhost:5173
+```
+
+Or with Docker: `docker compose up -d --build`, then open <http://localhost:5180>.
+
+| Screen          | Path                           | What to try                                                   |
+| --------------- | ------------------------------ | ------------------------------------------------------------- |
+| Home            | `/`                            | Overview, links to every screen, reset sample data            |
+| Front of house  | `/staff`                       | Tap a free table → seat guests → QR code; open a seated table; settle the bill |
+| Customer menu   | `/order?table=N&session=TOKEN` | Opened from the QR: search dishes, dietary labels and allergens, order, follow status, call waiter, pay. Adapts to phone, iPad and PC |
+
+Menu photos are openly licensed images from Wikimedia Commons (credits in [frontend/public/menu/CREDITS.md](frontend/public/menu/CREDITS.md) and on the menu's "Photo credits" link).
+
+The demo starts with sample data (tables 2, 3, 5, 6 and 7 seated with orders at different stages). Open Front of house and a Customer menu in separate tabs of the same browser and they update each other live.
+
+**Stripe test payments:** put your Stripe sandbox keys in `backend/.env` (or the root `.env`) as `STRIPE_SECRET_KEY=sk_test_…` and `STRIPE_PUBLISHABLE_KEY=pk_test_…`, then `docker compose up -d --force-recreate backend`. "Pay now" on the customer menu then opens Stripe's real payment form (card or PromptPay); pay with test card `4242 4242 4242 4242`, any future expiry, any CVC. Without keys it falls back to a simulated checkout. This is the only backend piece in phase 1: it creates the payment and confirms it with Stripe; the bill amount still comes from the browser's mock data.
+
+**Public link via ngrok:** put `NGROK_AUTHTOKEN` and `NGROK_URL` (your reserved ngrok domain) in `.env`, set `VITE_PUBLIC_BASE_URL=https://<NGROK_URL>` in `frontend/.env`, then run `docker compose --profile tunnel up -d`. Table QR codes will then open on any phone.
+
+**Scanning with a real phone on the same Wi-Fi (no ngrok):** set `VITE_PUBLIC_BASE_URL` in `frontend/.env` to your computer's LAN address (e.g. `http://192.168.1.20:5180`) so the QR code points somewhere the phone can reach. Because demo data lives in each browser, the phone will offer to continue that table's session locally.
 
 | Layer    | Tech                                                   |
 | -------- | ------------------------------------------------------ |
@@ -29,14 +57,17 @@ OMS/
 │   └── requirements-dev.txt
 ├── frontend/
 │   ├── src/
-│   │   ├── App.tsx
-│   │   └── lib/api.ts        # fetch wrapper for the backend API
+│   │   ├── App.tsx           # routes: /, /staff, /order (kitchen page kept, not routed)
+│   │   ├── demo/             # mock data, seed, browser store (stands in for the API)
+│   │   ├── pages/            # customer, staff, kitchen, home screens
+│   │   ├── components/       # shared UI, icons, formatting helpers
+│   │   └── lib/api.ts        # fetch wrapper for the future backend API
 │   └── vite.config.ts        # dev server proxies /api to the backend
 └── docs/
     └── REQUIREMENTS.md       # collected requirements
 ```
 
-## Setup guide
+## Full setup guide (with backend)
 
 ### Prerequisites
 
@@ -84,7 +115,7 @@ The backend runs `alembic upgrade head` on start, so the database schema is alwa
 
 ### 3. Check it works
 
-Open <http://localhost:5180>. The page should show `API status: ok, database ok`.
+Open <http://localhost:5180> for the demo home page. The backend health check:
 
 ```bash
 curl http://localhost:8000/api/health

@@ -1,163 +1,146 @@
-# OMS — Requirements (draft v0.1)
+# OMS — Requirements (draft v0.2)
 
-Status: **draft, not yet confirmed.** Everything below except the tech stack is a proposed baseline for a typical online ordering system. Items marked *assumption* need to be confirmed, and the open questions at the end must be answered before building starts.
+**Restaurant dine-in ordering with table QR codes.**
 
-Tracked in Zyrenn → project **OMS** → Product (request RQ-1, requirements REQ-n).
+Status: draft. Requirements marked *assumption* and the open questions in section 8 still need answers from the restaurant. Tracked in Zyrenn → project **OMS** → Product. Requirement codes (REQ-n) below match Zyrenn.
 
-## 1. Original request
+| Version | Date       | Change                                                                 |
+| ------- | ---------- | ---------------------------------------------------------------------- |
+| 0.1     | 2026-10-14 | Generic online shop baseline (RQ-1)                                     |
+| 0.2     | 2026-10-14 | Reworked for restaurant dine-in QR ordering (RQ-2); phase 1 = frontend demo (RQ-3) |
 
-> Ordering Management System
-> Frontend: React
-> Backend: Python
-> Payment: Stripe
-> Database: MySQL
+## 1. Requests (word for word)
 
-## 2. Users and roles
+- **RQ-1:** "Ordering Management System. Frontend: React, Backend: Python, Payment: Stripe, Database: MySQL"
+- **RQ-2:** "this will be for restaurant. the flow will start from when customer walk in to shop and sit down, we'll generate QR code that contain table number (just for reference of which table we need to serve to) and session (to track the order data and state). then the menu will appear to select."
+- **RQ-3:** "I need only frontend demo. no backend implementation yet."
 
-| Role         | Who                                  | Main goals                                         |
-| ------------ | ------------------------------------ | -------------------------------------------------- |
-| Guest        | Visitor without an account           | Browse products                                    |
-| Customer     | Registered buyer                     | Order, pay, track orders, see order history        |
-| Staff        | Shop / operations team               | Process orders, update status, manage stock        |
-| Admin        | Owner / manager                      | Everything staff can do + products, refunds, users, reports |
+## 2. The flow
 
-## 3. Product structure
+```
+Guests sit down
+   → Staff open a session for the table → QR code (table number + session token)
+   → Guests scan → menu opens on their phone (no app, no login)
+   → Guests order in rounds → kitchen display
+   → Kitchen: cooking → ready → staff serve
+   → Guests call waiter / ask for bill → pay by phone (Stripe) or at the table
+   → Session closes, QR stops working, table is free
+```
 
-| Component              | Capabilities                                                                 |
-| ---------------------- | ---------------------------------------------------------------------------- |
-| Customer storefront    | Browse catalogue, search/filter, product detail, cart, checkout, order history and tracking, account |
-| Admin back office      | Product & category management, order management, inventory, refunds, customer list, sales dashboard |
-| Backend API            | Authentication & roles, order service, inventory service, notifications      |
-| Payments (Stripe)      | Payment Intents, webhook handling, refunds (shared by storefront and back office) |
+**Table session:** one seating at one table, from guests sitting down until the bill is paid. Every order belongs to a session. The QR link carries the table number for display only; the backend routes orders by the session token.
 
-## 4. Functional requirements
+## 3. Users
 
-Priority: **H** = needed for first release (MVP), **N** = normal, **L** = later.
+| Role    | Who                       | Uses                                    |
+| ------- | ------------------------- | --------------------------------------- |
+| Diner   | Guest at a table          | Customer menu on their own phone; no account |
+| Waiter  | Front-of-house staff      | Staff app: seat guests, QR, serve, settle bills |
+| Kitchen | Cooks / bar               | Kitchen display                         |
+| Admin   | Owner / manager           | Back office: menu, tables, refunds, reports |
 
-### Accounts
+## 4. Product structure
 
-**FR-1 Customer accounts and staff roles (H)**
-- A visitor can register with email and password, log in and log out.
-- Passwords are stored hashed (bcrypt/argon2), never in plain text.
-- Every user has one role: customer, staff or admin. API endpoints check the role.
-- A customer can reset a forgotten password by email.
+| Component                     | Capabilities                                                                 |
+| ----------------------------- | ---------------------------------------------------------------------------- |
+| CMP-1 Customer menu (QR)      | Browse menu, build order, send to kitchen, follow orders & running bill, call waiter / request bill, pay from phone |
+| CMP-5 Staff app               | Open table session & generate QR, table overview, manage table orders, settle bill & close session |
+| CMP-6 Kitchen display         | See incoming items, update item status                                      |
+| CMP-2 Admin back office       | Manage menu, manage tables, mark items sold out, refunds, sales dashboard  |
+| CMP-3 Backend API             | Staff login & roles, table sessions & QR tokens, order/item lifecycle, real-time updates |
+| CMP-4 Payments (Stripe)       | Payment Intents, webhooks, refunds                                          |
 
-### Storefront
+**Item lifecycle:** `submitted → preparing → ready → served`, or `cancelled` (by staff, before it is ready).
+**Session lifecycle:** `open → closed` (closed when the bill is fully paid).
 
-**FR-2 Product catalogue (H)**
-- Customers see active products with name, image, price, and in-stock / out-of-stock state.
-- Products can be filtered by category and searched by name.
-- A product detail page shows description, price, images and availability.
-- Inactive products are not shown and cannot be ordered.
+## 5. Functional requirements
 
-**FR-3 Shopping cart (H)**
-- A customer can add, change quantity of, and remove items.
-- The cart shows line totals and the order total, recalculated by the backend (prices from the browser are never trusted).
-- The cart survives a page reload.
-- A customer cannot add more of an item than is in stock.
+Priority: **H** first release, **N** normal, **L** later.
 
-**FR-4 Checkout and order placement (H)**
-- At checkout the customer enters contact details and delivery/pickup information.
-- Placing an order creates it with status `pending_payment` and a unique order number.
-- Order lines keep the price at the time of ordering, even if the product price changes later.
+### Seating and QR
+**REQ-16 Staff open a table session and generate a QR code (H)**
+- Staff pick a free table and open a session; a QR code is produced whose link contains the table number and a session token.
+- The token is random and unguessable (≥128 bits). A table has at most one open session.
+- The table number in the link is display-only; orders are routed by the session's table.
+- When the session closes, the QR no longer allows ordering.
 
-**FR-5 Online payment with Stripe (H)**
-- Payment uses Stripe Payment Intents with Stripe Elements; card data never touches our servers.
-- An order becomes `paid` only when the backend receives a verified `payment_intent.succeeded` webhook, not because the browser says so.
-- A failed or abandoned payment leaves the order `pending_payment`; the customer can retry.
-- Each webhook event is processed at most once (idempotent by event id).
-- Unpaid orders are cancelled automatically after a set time (*assumption: 30 minutes*) and their stock is released.
+**REQ-17 Scanning the QR opens the menu for that session (H)**
+- Opens in the phone browser with no install or login, and shows the table number.
+- An invalid or closed session shows "please ask our staff" and blocks ordering.
+- Several phones at the same table can join the same session.
 
-**FR-6 Order history and tracking (N)**
-- A customer sees a list of their orders with number, date, total and status.
-- An order detail page shows its lines, payment state and status history.
+### Ordering
+**REQ-18 Diners browse and search the menu (H)** — search by dish name, description, category or option as you type; categories with quick navigation; name, price, description (photo when available); sold-out items shown but not orderable; usable one-handed from 360px wide.
 
-### Back office
+**Dietary labels and allergens (H, from RQ-7)** — each dish shows Vegetarian / Vegan / Vegetarian option / Halal and the allergens it contains (dairy, peanuts, tree nuts, shellfish, egg); dish details remind diners to tell staff about allergies; labels are searchable. *Open:* halal certification, required allergen list, filters.
 
-**FR-7 Product and category management (H)**
-- Admin can create, edit, deactivate and delete products: name, description, price, category, images, SKU, stock quantity, active flag.
-- Admin can create, rename and delete categories.
+**REQ-19 Diners build an order with quantities, options and notes (H)** — add/change/remove items; pick options (e.g. protein, spice level, paid extras); free-text note; totals include option prices; cart survives a reload.
 
-**FR-8 Order management (H)**
-- Staff see all orders, filterable by status, date range and customer, and searchable by order number.
-- Staff move an order through its lifecycle:
-  `pending_payment → paid → preparing → ready_for_pickup / shipped → completed`, with `cancelled` and `refunded` as end states.
-- Only allowed transitions are accepted; every change is recorded with who made it and when.
-- Staff can add internal notes to an order.
+**REQ-20 Diners send orders to the kitchen in rounds (H)** — sending creates an order round on the session; items reach the kitchen display within seconds; any number of rounds while the session is open; each item keeps its price at time of ordering; diner sees confirmation.
 
-**FR-9 Inventory tracking (N)**
-- Stock is reserved when an order is placed and released when it is cancelled or expires.
-- Two customers cannot both buy the last unit (stock is updated in a transaction with row locking).
-- Staff can adjust stock manually, with a reason.
-- Products with stock below a threshold are flagged.
+**REQ-21 Diners follow item status and the running bill (N)** — every item with status (sent, cooking, ready, served, cancelled), updated live; running total with service charge and VAT.
 
-**FR-10 Refunds (N)**
-- Admin can refund a paid order fully or partially through Stripe from the back office.
-- The order shows the refunded amount; a full refund sets status `refunded`.
-- Refunds made directly in the Stripe dashboard are picked up by webhook (`charge.refunded`).
+**REQ-24 Diners can call a waiter and ask for the bill (N)** — one tap; staff see an alert with the table number; staff acknowledge to clear it.
 
-**FR-11 Email notifications (N)**
-- Customer gets an email when an order is paid, and when it is shipped / ready for pickup.
-- Staff get an email (or in-app alert) for each new paid order.
+### Kitchen and floor
+**REQ-22 Kitchen sees incoming items and marks them cooking and ready (H)** — live queue, oldest first, with table, quantity, options and notes; late items highlighted; only allowed status changes.
 
-**FR-12 Sales dashboard (L)**
-- Admin sees orders and revenue per day/week/month, top-selling products, and order counts by status.
-- Data can be exported as CSV.
+**REQ-23 Staff see all tables and manage their orders (H)** — table overview (free / seated / ready to serve / bill requested); open a table to see its orders; mark ready items served; add items for guests without phones; cancel items not yet cooking.
 
-## 5. Non-functional requirements
+**REQ-27 Staff and kitchen can mark items sold out (N)** — one-tap toggle; sold-out items can't be ordered; diners see it live. No ingredient-level stock tracking (*assumption*).
 
-**NFR-1 Tech stack (constraint)** — Frontend React, backend Python (FastAPI), payments Stripe, database MySQL. Local development runs with Docker Compose.
+### Payment
+**REQ-25 The table bill is paid by Stripe on the phone or at the counter, then the session closes (H)**
+- Bill lists all non-cancelled items with subtotal, service charge, VAT and total.
+- Diner can pay on their phone with Stripe (card data never reaches our servers); staff can record cash or card-terminal payment instead.
+- A Stripe payment counts only after a signature-verified webhook.
+- When fully paid, the session closes, the QR stops working and the table becomes free.
+- *Assumptions:* pay once at the end of the meal; THB; 10% service charge and 7% VAT added on top.
 
-**NFR-2 Security**
-- No card data stored or processed by our servers (Stripe Elements, PCI SAQ A scope).
-- Stripe webhook signatures are verified; secret keys live only in environment variables.
-- HTTPS in production; authentication with short-lived tokens or secure HTTP-only cookies.
-- Input validated on the backend; protection against SQL injection (ORM), XSS and CSRF.
+**REQ-10 Admins can refund fully or partially through Stripe (N)**
 
-**NFR-3 Money and data correctness**
-- Amounts are stored as integers in the smallest currency unit (e.g. satang), with a currency code.
-- Order and payment records are never hard-deleted.
-- Schema changes go through Alembic migrations.
+### Administration
+**REQ-26 Admins manage the menu and tables (H)** — categories, items, prices, photos, option groups; tables (number, seats, zone); items/tables used in past orders are hidden, never deleted.
 
-**NFR-4 Usability**
-- Storefront works on mobile phones (responsive, from 360px width).
-- *Assumption:* UI languages are Thai and English.
+**REQ-28 Staff log in with roles; diners need no account (H)** — roles waiter, kitchen, admin; each sees only its screens.
 
-**NFR-5 Performance and availability** *(targets to confirm)*
-- Catalogue and cart pages respond in under 500 ms at the 95th percentile under normal load.
-- Daily database backups.
+**REQ-12 Sales dashboard and CSV export (L)**
 
-**NFR-6 Quality**
-- Backend has automated tests for order, inventory and payment logic.
-- Lint and tests run in CI on every pull request.
+## 6. Non-functional requirements
 
-## 6. Proposed data model (first cut)
+- **REQ-13 Stack (constraint):** React + TypeScript frontend, Python (FastAPI) backend, Stripe, MySQL; Docker Compose for local dev.
+- **REQ-29 Phase 1 is a frontend-only demo with mock data (constraint).** See section 7.
+- **REQ-14 Security:** no card data on our servers; verified Stripe webhooks; secrets only in env vars; HTTPS; backend input validation. Session tokens unguessable and useless once closed.
+- **REQ-15 Money and records:** amounts as integer satang with currency; orders/payments never hard-deleted; schema changes via migrations; daily backups.
+- **Usability (RQ-6):** guest ordering works on phone (single column), iPad portrait (grid of dish cards) and iPad landscape / PC (menu grid with the order always visible in a side panel); staff app works on tablet and phone; kitchen display readable at a distance.
+- **Real-time:** order and status changes reach other screens within ~2 seconds (WebSocket/SSE in the real system).
 
-| Table               | Key fields                                                                    |
-| ------------------- | ----------------------------------------------------------------------------- |
-| `users`             | id, email, password_hash, name, phone, role, created_at                      |
-| `categories`        | id, name, slug, sort_order                                                    |
-| `products`          | id, category_id, sku, name, description, price_minor, currency, stock_qty, is_active |
-| `product_images`    | id, product_id, url, sort_order                                               |
-| `orders`            | id, order_number, user_id, status, subtotal_minor, shipping_minor, total_minor, currency, contact + delivery fields, created_at |
-| `order_items`       | id, order_id, product_id, product_name, unit_price_minor, quantity            |
-| `order_status_history` | id, order_id, from_status, to_status, changed_by, note, created_at         |
-| `payments`          | id, order_id, stripe_payment_intent_id, amount_minor, status, created_at      |
-| `refunds`           | id, payment_id, stripe_refund_id, amount_minor, reason, created_by, created_at |
-| `stripe_events`     | id (Stripe event id), type, processed_at                                      |
-| `stock_adjustments` | id, product_id, delta, reason, created_by, created_at                         |
+## 7. Phase 1: frontend demo (current)
 
-## 7. Open questions
+Built in `frontend/` with mock data; no backend calls.
 
-1. **What is being ordered?** Retail goods shipped to customers, food/drinks for a restaurant or café, or B2B wholesale? This changes the order flow a lot.
-2. **Delivery, pickup, or both?** If delivery: how are shipping fees calculated, and is there courier integration?
-3. **Single shop or multiple branches / sellers?**
-4. **Currency and tax:** THB only? Should prices include VAT 7%, and are tax invoices needed?
-5. **Payment methods:** cards only, or also PromptPay (supported by Stripe in Thailand)?
-6. **Guest checkout:** can people order without creating an account?
-7. **Product options:** do products have variants (size, colour) or add-ons?
-8. **Languages:** Thai and English, or one only?
-9. **Notifications:** email only, or also LINE / SMS?
-10. **Scale:** expected orders per day and number of staff users?
-11. **Hosting:** where will production run (VPS, AWS, GCP, …), and is there a domain?
-12. **Timeline:** target date for the first release, and which of the items above are truly MVP?
+| Screen          | URL                                  | Shows                                                          |
+| --------------- | ------------------------------------ | -------------------------------------------------------------- |
+| Home            | `/`                                  | Entry point, flow explanation, reset sample data               |
+| Front of house  | `/staff`                             | Table grid, alerts, seat guests → QR, table detail, settle bill |
+| Kitchen display | (not routed)                         | Code kept in `pages/kitchen/`; removed from the routes for now |
+| Customer menu   | `/order?table=N&session=TOKEN`       | Menu, options, cart, send to kitchen, order status, bill, simulated Stripe payment |
+
+- **Sample data:** 8 tables and an 18-item Thai menu. Tables 2, 3, 5, 6 and 7 are seated with orders at every stage, plus a waiter call and a bill request. Two items are sold out.
+- **State** lives in the browser (`localStorage`), so tabs in the same browser update each other live. A phone scanning a QR made on another device can't see that browser's data; it offers to continue the session locally instead.
+- **Payment** uses real Stripe in sandbox mode when keys are set (card and PromptPay, confirmed server-side by `POST /api/payments/intents` and `GET /api/payments/intents/{id}`); otherwise simulated. The amount comes from the browser's mock bill, which the real backend must calculate itself.
+- **Search** filters the menu as you type.
+
+## 8. Open questions
+
+1. **Payment timing:** pay at the end of the meal, or pay for each order before it goes to the kitchen?
+2. **Service charge and VAT:** is there a service charge (10%?), and are menu prices VAT-inclusive? Tax invoices needed?
+3. **Split bill** between diners?
+4. **Payment methods:** cards, PromptPay, cash?
+5. **QR delivery:** printed slip, or shown on a staff tablet / table stand?
+6. **Shared phones:** do phones at one table share a cart, or each keep their own cart on the same table bill?
+7. **Order approval:** must staff confirm a diner's order before it goes to the kitchen?
+8. **Kitchen output:** display screen, ticket printer, or both? Separate stations (kitchen vs bar)?
+9. **Menu:** Thai and English? Real item options and paid extras?
+10. **Table changes:** move a session to another table, or merge tables?
+11. **Staff login:** PIN on a shared tablet, or personal accounts?
+12. **Scale & timeline:** number of tables, staff and daily covers; target date for a pilot.

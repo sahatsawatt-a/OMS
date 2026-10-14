@@ -1,27 +1,17 @@
-import { useEffect, useState } from 'react'
-import { api } from './lib/api'
-import './App.css'
-
-type Health = { status: string; database: string }
+import { Route, Routes } from 'react-router-dom'
+import CustomerPage from './pages/customer/CustomerPage'
+import HomePage from './pages/HomePage'
+import StaffPage from './pages/staff/StaffPage'
 
 function App() {
-  const [health, setHealth] = useState<Health | null>(null)
-  const [error, setError] = useState<string | null>(null)
-
-  useEffect(() => {
-    api<Health>('/health')
-      .then(setHealth)
-      .catch((e: Error) => setError(e.message))
-  }, [])
-
   return (
-    <main>
-      <h1>Ordering Management System</h1>
-      <p>
-        API status:{' '}
-        {error ? `unreachable (${error})` : health ? `${health.status}, database ${health.database}` : 'checking…'}
-      </p>
-    </main>
+    <Routes>
+      <Route path="/" element={<HomePage />} />
+      <Route path="/staff" element={<StaffPage />} />
+      {/* Kitchen display (pages/kitchen/KitchenPage) is kept but not routed for now */}
+      <Route path="/order" element={<CustomerPage />} />
+      <Route path="*" element={<HomePage />} />
+    </Routes>
   )
 }
 

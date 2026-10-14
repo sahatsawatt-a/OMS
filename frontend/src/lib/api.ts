@@ -6,7 +6,10 @@ export async function api<T>(path: string, init?: RequestInit): Promise<T> {
     ...init,
   })
   if (!res.ok) {
-    throw new Error(`${res.status} ${res.statusText}`)
+    // FastAPI puts a readable message in `detail` when it can
+    const body = await res.json().catch(() => null)
+    const detail = typeof body?.detail === 'string' ? body.detail : `${res.status} ${res.statusText}`
+    throw new Error(detail)
   }
   return res.json() as Promise<T>
 }
