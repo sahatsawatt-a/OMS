@@ -41,6 +41,7 @@ services:
 
   frontend:
     build: ./frontend
+    restart: unless-stopped
     env_file:
       - path: ./frontend/.env
         required: false
@@ -58,6 +59,7 @@ services:
   # Start with: docker compose --profile tunnel up -d
   ngrok:
     image: ngrok/ngrok:3-alpine
+    restart: unless-stopped
     profiles: ["tunnel"]
     command: http frontend:5173 --url=https://${NGROK_URL:?set NGROK_URL in .env} --log=stdout
     environment:

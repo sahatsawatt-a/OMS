@@ -23,3 +23,8 @@ dist/
 !.vscode/extensions.json
 .idea/
 .DS_Store
+
+# Local credentials shared with dev tools (see secrets/README.md)
+secrets/*
+!secrets/README.md
+!secrets/credentials.example.env
