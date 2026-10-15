@@ -7,7 +7,8 @@ import { TABLES } from './mockData'
 import { emptyState, seedState } from './seed'
 import type { CartLine, DemoState, ItemStatus, PaymentMethod, TableSession } from './types'
 
-const STORAGE_KEY = 'oms-demo-v2'
+// Bump when stored data changes meaning: v3 = prices in AUD cents (v2 held THB satang)
+const STORAGE_KEY = 'oms-demo-v3'
 
 export { randomToken }
 
