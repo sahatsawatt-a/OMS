@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { formatElapsed, useNow } from '../../components/format'
 import { Icon } from '../../components/Icon'
-import { CATEGORIES, KITCHEN_LATE_AFTER_MS, MENU } from '../../demo/mockData'
+import { KITCHEN_LATE_AFTER_MS } from '../../demo/mockData'
 import { actions, useDemoState } from '../../demo/store'
 import type { ItemStatus, Order } from '../../demo/types'
 import './kitchen.css'
@@ -63,10 +63,10 @@ export default function KitchenPage() {
           <aside className="availability">
             <h2>Menu availability</h2>
             <p className="muted small">Tap to mark an item sold out. Diners see it straight away.</p>
-            {CATEGORIES.map((c) => (
+            {demo.menu.categories.map((c) => (
               <div key={c.id}>
                 <h3>{c.name}</h3>
-                {MENU.filter((m) => m.categoryId === c.id).map((m) => {
+                {demo.menu.items.filter((m) => m.categoryId === c.id && !m.hidden).map((m) => {
                   const out = demo.soldOut.includes(m.id)
                   return (
                     <label key={m.id} className={`avail-row ${out ? 'out' : ''}`}>

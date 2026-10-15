@@ -19,6 +19,7 @@ Or with Docker: `docker compose up -d --build`, then open <http://localhost:5180
 | Home            | `/`                            | Overview, links to every screen, reset sample data            |
 | Front of house  | `/staff`                       | Tap a free table → seat guests → QR code; open a seated table; settle the bill |
 | Customer menu   | `/order?table=N&session=TOKEN` | Opened from the QR: search dishes, dietary labels and allergens, order, follow status, call waiter, pay. Adapts to phone, iPad and PC |
+| Menu admin      | `/admin`                       | Add, edit, hide or delete dishes (price, photo, dietary labels, allergens, options); mark sold out; manage categories |
 
 Menu photos are openly licensed images from Wikimedia Commons (credits in [frontend/public/menu/CREDITS.md](frontend/public/menu/CREDITS.md) and on the menu's "Photo credits" link).
 
@@ -58,7 +59,7 @@ OMS/
 │   └── requirements-dev.txt
 ├── frontend/
 │   ├── src/
-│   │   ├── App.tsx           # routes: /, /staff, /order (kitchen page kept, not routed)
+│   │   ├── App.tsx           # routes: /, /staff, /order, /admin (kitchen page kept, not routed)
 │   │   ├── demo/             # mock data, seed, browser store (stands in for the API)
 │   │   ├── pages/            # customer, staff, kitchen, home screens
 │   │   ├── components/       # shared UI, icons, formatting helpers

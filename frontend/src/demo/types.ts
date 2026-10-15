@@ -44,6 +44,13 @@ export type MenuItem = {
   optionGroups?: OptionGroup[]
   dietary?: DietaryTag[]
   allergens?: Allergen[]
+  /** Hidden dishes stay in past orders but are not shown on the menu */
+  hidden?: boolean
+}
+
+export type MenuData = {
+  categories: MenuCategory[]
+  items: MenuItem[]
 }
 
 export type SelectedOption = {
@@ -94,6 +101,7 @@ export type DemoState = {
   sessions: Record<string, TableSession>
   orders: Order[]
   soldOut: string[]
+  menu: MenuData
 }
 
 export type CartLine = {

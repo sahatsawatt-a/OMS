@@ -3,9 +3,9 @@
 // stay in sync live (via the `storage` event). Replace these actions with API calls later.
 import { useSyncExternalStore } from 'react'
 import { randomToken, shortId } from './ids'
-import { TABLES } from './mockData'
+import { defaultMenu, TABLES } from './mockData'
 import { emptyState, seedState } from './seed'
-import type { CartLine, DemoState, ItemStatus, PaymentMethod, TableSession } from './types'
+import type { CartLine, DemoState, ItemStatus, MenuItem, PaymentMethod, TableSession } from './types'
 
 // Bump when stored data changes meaning: v3 = prices in AUD cents (v2 held THB satang)
 const STORAGE_KEY = 'oms-demo-v3'
@@ -15,7 +15,12 @@ export { randomToken }
 function load(): DemoState {
   try {
     const raw = localStorage.getItem(STORAGE_KEY)
-    if (raw) return JSON.parse(raw) as DemoState
+    if (raw) {
+      const saved = JSON.parse(raw) as DemoState
+      // Data saved before the menu became editable has no menu yet
+      saved.menu ??= defaultMenu()
+      return saved
+    }
   } catch {
     // Storage unavailable or corrupt: fall back to a fresh demo
   }
@@ -36,16 +41,20 @@ function emit() {
   listeners.forEach((l) => l())
 }
 
-function update(mutate: (draft: DemoState) => void) {
+/** Apply a change; returns false when the browser refused to save it (e.g. storage full) */
+function update(mutate: (draft: DemoState) => void): boolean {
   const next = structuredClone(state)
   mutate(next)
   state = next
+  let saved = true
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(next))
   } catch {
-    // Keep working in memory if storage is blocked
+    // Keep working in memory if storage is blocked or full
+    saved = false
   }
   emit()
+  return saved
 }
 
 window.addEventListener('storage', (e) => {
@@ -113,7 +122,7 @@ export const actions = {
         round,
         createdAt: Date.now(),
         items: lines
-          .filter((l) => !d.soldOut.includes(l.menuItemId))
+          .filter((l) => !d.soldOut.includes(l.menuItemId) && !d.menu.items.find((m) => m.id === l.menuItemId)?.hidden)
           .map((l) => ({
             id: shortId(),
             menuItemId: l.menuItemId,
@@ -187,17 +196,99 @@ export const actions = {
     })
   },
 
-  /** Back to the sample restaurant data */
+  /** Back to the sample tables and orders; the menu (and admin edits to it) is kept */
   reset() {
     update((d) => {
-      Object.assign(d, seedState())
+      Object.assign(d, { ...seedState(), menu: d.menu })
     })
   },
 
-  /** No tables seated, no orders */
+  /** No tables seated, no orders; the menu is kept */
   clear() {
     update((d) => {
-      Object.assign(d, emptyState())
+      Object.assign(d, { ...emptyState(), menu: d.menu })
     })
   },
+
+  // ---- Menu admin ----
+
+  /** Add a dish or replace the one with the same id */
+  saveMenuItem(item: MenuItem): boolean {
+    return update((d) => {
+      const i = d.menu.items.findIndex((m) => m.id === item.id)
+      if (i >= 0) d.menu.items[i] = item
+      else d.menu.items.push(item)
+    })
+  },
+
+  setMenuItemHidden(id: string, hidden: boolean) {
+    update((d) => {
+      const item = d.menu.items.find((m) => m.id === id)
+      if (item) item.hidden = hidden
+    })
+  },
+
+  /** Only dishes that were never ordered can be deleted; others are hidden instead */
+  deleteMenuItem(id: string): boolean {
+    if (state.orders.some((o) => o.items.some((i) => i.menuItemId === id))) return false
+    return update((d) => {
+      d.menu.items = d.menu.items.filter((m) => m.id !== id)
+      d.soldOut = d.soldOut.filter((s) => s !== id)
+    })
+  },
+
+  addCategory(name: string): string {
+    const id = `${slug(name) || 'category'}-${shortId().slice(0, 4).toLowerCase()}`
+    update((d) => {
+      d.menu.categories.push({ id, name })
+    })
+    return id
+  },
+
+  renameCategory(id: string, name: string) {
+    update((d) => {
+      const c = d.menu.categories.find((x) => x.id === id)
+      if (c) c.name = name
+    })
+  },
+
+  moveCategory(id: string, delta: -1 | 1) {
+    update((d) => {
+      const list = d.menu.categories
+      const i = list.findIndex((c) => c.id === id)
+      const j = i + delta
+      if (i < 0 || j < 0 || j >= list.length) return
+      ;[list[i], list[j]] = [list[j], list[i]]
+    })
+  },
+
+  /** Only empty categories can be deleted */
+  deleteCategory(id: string): boolean {
+    if (state.menu.items.some((m) => m.categoryId === id)) return false
+    return update((d) => {
+      d.menu.categories = d.menu.categories.filter((c) => c.id !== id)
+    })
+  },
+
+  /** Put the sample menu back (sold-out marks are cleared too) */
+  resetMenu() {
+    update((d) => {
+      d.menu = defaultMenu()
+      d.soldOut = []
+    })
+  },
+}
+
+export function slug(text: string): string {
+  return text
+    .toLowerCase()
+    .normalize('NFKD')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 40)
+}
+
+/** A new, unique dish id based on its name */
+export function newMenuItemId(name: string): string {
+  return `${slug(name) || 'dish'}-${shortId().slice(0, 4).toLowerCase()}`
 }

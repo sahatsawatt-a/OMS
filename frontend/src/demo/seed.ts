@@ -1,16 +1,16 @@
 // Sample restaurant state so the demo has something on every screen from the start.
 // Times are relative to when the demo is seeded (first load or "Reset to sample data").
 import { randomToken, shortId } from './ids'
-import { MENU_BY_ID, TABLES } from './mockData'
+import { DEFAULT_MENU_BY_ID, defaultMenu, TABLES } from './mockData'
 import type { DemoState, ItemStatus, Order, OrderItem, SelectedOption, TableSession } from './types'
 
 const MIN = 60 * 1000
 
-export const emptyState = (): DemoState => ({ sessions: {}, orders: [], soldOut: [] })
+export const emptyState = (): DemoState => ({ sessions: {}, orders: [], soldOut: [], menu: defaultMenu() })
 
 /** Build an order item from a menu id, picking options by choice name */
 function item(menuItemId: string, quantity: number, status: ItemStatus, choices: string[] = [], note = ''): OrderItem {
-  const menu = MENU_BY_ID[menuItemId]
+  const menu = DEFAULT_MENU_BY_ID[menuItemId]
   const options: SelectedOption[] = (menu.optionGroups ?? []).flatMap((g) =>
     g.choices.filter((c) => choices.includes(c.name)).map((c) => ({ groupName: g.name, choiceName: c.name, price: c.price })),
   )
@@ -112,5 +112,5 @@ export function seedState(now = Date.now()): DemoState {
     .flatMap((o) => o.items)
     .reduce((n, i) => n + i.unitPrice * i.quantity, 0)
 
-  return { sessions, orders, soldOut: ['coconut', 'massaman'] }
+  return { sessions, orders, soldOut: ['coconut', 'massaman'], menu: defaultMenu() }
 }

@@ -1,5 +1,5 @@
 import { MENU_DIETARY } from './dietary'
-import type { MenuCategory, MenuItem, OptionGroup, Table } from './types'
+import type { MenuCategory, MenuData, MenuItem, OptionGroup, Table } from './types'
 
 export const RESTAURANT_NAME = 'Ying Thai 2'
 export const RESTAURANT_TAGLINE = 'Thai Restaurant · Melbourne, Australia VIC'
@@ -69,7 +69,7 @@ const sweetness: OptionGroup = {
   ],
 }
 
-export const CATEGORIES: MenuCategory[] = [
+const DEFAULT_CATEGORIES: MenuCategory[] = [
   { id: 'starters', name: 'Starters' },
   { id: 'noodles', name: 'Noodles' },
   { id: 'rice', name: 'Rice dishes' },
@@ -104,7 +104,19 @@ const MENU_ITEMS: MenuItem[] = [
   { id: 'coconut-ice-cream', categoryId: 'desserts', name: 'Coconut ice cream', description: 'With roasted peanuts and sticky rice.', price: dollars(11) },
 ]
 
-// Every menu item has a sample photo at /menu/<id>.jpg (see photoCredits.ts) and sample dietary info
-export const MENU: MenuItem[] = MENU_ITEMS.map((m) => ({ ...m, image: `/menu/${m.id}.jpg`, ...MENU_DIETARY[m.id] }))
+// Every sample dish has a photo at /menu/<id>.jpg (see photoCredits.ts) and sample dietary info
+const DEFAULT_ITEMS: MenuItem[] = MENU_ITEMS.map((m) => ({ ...m, image: `/menu/${m.id}.jpg`, ...MENU_DIETARY[m.id] }))
 
-export const MENU_BY_ID: Record<string, MenuItem> = Object.fromEntries(MENU.map((m) => [m.id, m]))
+/** The sample menu; the live menu is kept in the demo store and edited on the admin page */
+export function defaultMenu(): MenuData {
+  return structuredClone({ categories: DEFAULT_CATEGORIES, items: DEFAULT_ITEMS })
+}
+
+/** Sample dishes by id, used to build the seeded orders */
+export const DEFAULT_MENU_BY_ID: Record<string, MenuItem> = Object.fromEntries(DEFAULT_ITEMS.map((m) => [m.id, m]))
+
+/** Option groups an admin can attach to a dish */
+export const OPTION_GROUPS: OptionGroup[] = [protein, spice, extras, sweetness]
+
+/** The bundled sample photos an admin can pick from */
+export const SAMPLE_PHOTOS: { name: string; url: string }[] = DEFAULT_ITEMS.map((m) => ({ name: m.name, url: m.image! }))

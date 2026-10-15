@@ -125,12 +125,14 @@ Built in `frontend/` with mock data; no backend calls.
 | Home            | `/`                                  | Entry point, flow explanation, reset sample data               |
 | Front of house  | `/staff`                             | Table grid, alerts, seat guests → QR, table detail, settle bill |
 | Kitchen display | (not routed)                         | Code kept in `pages/kitchen/`; removed from the routes for now |
+| Menu admin      | `/admin`                             | Dishes (name, price, photo upload or sample, dietary labels, allergens, options), sold out, hidden, delete if never ordered; categories add / rename / reorder / delete if empty; reset to sample menu |
 | Customer menu   | `/order?table=N&session=TOKEN`       | Menu, options, cart, send to kitchen, order status, bill, simulated Stripe payment |
 
 - **Sample data:** 8 tables and an 18-item Thai menu. Tables 2, 3, 5, 6 and 7 are seated with orders at every stage, plus a waiter call and a bill request. Two items are sold out.
 - **State** lives in the browser (`localStorage`), so tabs in the same browser update each other live. A phone scanning a QR made on another device can't see that browser's data; it offers to continue the session locally instead.
 - **Payment** uses real Stripe in sandbox mode when keys are set (card, charged in AUD, confirmed server-side by `POST /api/payments/intents` and `GET /api/payments/intents/{id}`); otherwise simulated. The amount comes from the browser's mock bill, which the real backend must calculate itself.
 - **Search** filters the menu as you type.
+- **Menu admin** (RQ-9) edits the menu kept in the browser store; the guest menu updates straight away in the same browser. Not shared across devices until the backend stores the menu.
 
 ## 8. Open questions
 

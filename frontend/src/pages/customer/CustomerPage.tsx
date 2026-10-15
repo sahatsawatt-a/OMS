@@ -4,14 +4,14 @@ import { formatElapsed, formatTime, useNow } from '../../components/format'
 import { Icon } from '../../components/Icon'
 import { Sheet, StatusBadge } from '../../components/shared'
 import { useMediaQuery } from '../../components/useMediaQuery'
-import { CATEGORIES, MENU, RESTAURANT_NAME, TABLES } from '../../demo/mockData'
+import { RESTAURANT_NAME, TABLES } from '../../demo/mockData'
 import { calculateBill, formatAUD } from '../../demo/money'
 import { allergenSentence, DIETARY_LABEL } from '../../demo/dietary'
-import { PHOTO_CREDITS } from '../../demo/photoCredits'
+import { creditForImage } from '../../demo/photoCredits'
 import PaySheet from './PaySheet'
 import { useStripeRedirectReturn } from './stripe'
 import { actions, randomToken, useDemoState } from '../../demo/store'
-import type { CartLine, MenuItem, Order, SelectedOption, TableSession } from '../../demo/types'
+import type { CartLine, MenuData, MenuItem, Order, SelectedOption, TableSession } from '../../demo/types'
 import './customer.css'
 
 export default function CustomerPage() {
@@ -58,7 +58,7 @@ export default function CustomerPage() {
     )
   }
 
-  return <OrderingApp session={session} soldOut={state.soldOut} />
+  return <OrderingApp session={session} soldOut={state.soldOut} menu={state.menu} />
 }
 
 function SessionMessage({ title, text, children }: { title: string; text: string; children?: React.ReactNode }) {
@@ -96,17 +96,23 @@ function useCart(token: string) {
   return [lines, setLines] as const
 }
 
-function OrderingApp({ session, soldOut }: { session: TableSession; soldOut: string[] }) {
+function OrderingApp({ session, soldOut, menu }: { session: TableSession; soldOut: string[]; menu: MenuData }) {
   const state = useDemoState()
   const [tab, setTab] = useState<'menu' | 'orders'>('menu')
-  const [category, setCategory] = useState(CATEGORIES[0].id)
+  // Only dishes the admin has not hidden, in categories that have some
+  const items = useMemo(() => menu.items.filter((m) => !m.hidden), [menu.items])
+  const categories = useMemo(
+    () => menu.categories.filter((c) => items.some((m) => m.categoryId === c.id)),
+    [menu.categories, items],
+  )
+  const [category, setCategory] = useState(categories[0]?.id ?? '')
   const [picking, setPicking] = useState<MenuItem | null>(null)
   const [cartOpen, setCartOpen] = useState(false)
   const [payOpen, setPayOpen] = useState(false)
   const [creditsOpen, setCreditsOpen] = useState(false)
   const [query, setQuery] = useState('')
   const searching = query.trim().length > 0
-  const results = useMemo(() => searchMenu(query), [query])
+  const results = useMemo(() => searchMenu(query, items, categories), [query, items, categories])
   const [toast, setToast] = useState<string | null>(null)
   const [cart, setCart] = useCart(session.token)
   // iPad landscape and desktop: cart / bill stay visible in a side column
@@ -210,7 +216,7 @@ function OrderingApp({ session, soldOut }: { session: TableSession; soldOut: str
                 </label>
                 {!searching && (
                   <div className="c-categories">
-                    {CATEGORIES.map((c) => (
+                    {categories.map((c) => (
                       <button key={c.id} className={category === c.id ? 'active' : ''} onClick={() => scrollTo(c.id)}>
                         {c.name}
                       </button>
@@ -233,11 +239,11 @@ function OrderingApp({ session, soldOut }: { session: TableSession; soldOut: str
                     </div>
                   </section>
                 ) : (
-                  CATEGORIES.map((c) => (
+                  categories.map((c) => (
                     <section key={c.id} id={`cat-${c.id}`} className="c-section">
                       <h2>{c.name}</h2>
                       <div className="menu-grid">
-                        {MENU.filter((m) => m.categoryId === c.id).map((item) => (
+                        {items.filter((m) => m.categoryId === c.id).map((item) => (
                           <MenuItemRow key={item.id} item={item} soldOut={soldOut.includes(item.id)} onPick={setPicking} />
                         ))}
                       </div>
@@ -326,7 +332,7 @@ function OrderingApp({ session, soldOut }: { session: TableSession; soldOut: str
         />
       )}
 
-      {creditsOpen && <PhotoCreditsSheet onClose={() => setCreditsOpen(false)} />}
+      {creditsOpen && <PhotoCreditsSheet items={items} onClose={() => setCreditsOpen(false)} />}
 
       {toast && <div className="toast">{toast}</div>}
     </div>
@@ -334,11 +340,11 @@ function OrderingApp({ session, soldOut }: { session: TableSession; soldOut: str
 }
 
 /** Every word typed must appear in the dish name, description, category, options or dietary labels */
-function searchMenu(query: string): MenuItem[] {
+function searchMenu(query: string, items: MenuItem[], categories: MenuData['categories']): MenuItem[] {
   const words = query.toLowerCase().split(/\s+/).filter(Boolean)
   if (words.length === 0) return []
-  return MENU.filter((m) => {
-    const category = CATEGORIES.find((c) => c.id === m.categoryId)?.name ?? ''
+  return items.filter((m) => {
+    const category = categories.find((c) => c.id === m.categoryId)?.name ?? ''
     const options = (m.optionGroups ?? []).flatMap((g) => g.choices.map((c) => c.name))
     const dietary = (m.dietary ?? []).map((d) => DIETARY_LABEL[d])
     const text = [m.name, m.description, category, ...options, ...dietary, ...(m.allergens ?? [])].join(' ').toLowerCase()
@@ -398,6 +404,7 @@ function MenuItemRow({ item, soldOut, onPick }: { item: MenuItem; soldOut: boole
 }
 
 function ItemSheet({ item, onClose, onAdd }: { item: MenuItem; onClose: () => void; onAdd: (l: CartLine) => void }) {
+  const credit = creditForImage(item.image)
   const groups = item.optionGroups ?? []
   const [qty, setQty] = useState(1)
   const [note, setNote] = useState('')
@@ -446,9 +453,9 @@ function ItemSheet({ item, onClose, onAdd }: { item: MenuItem; onClose: () => vo
       }
     >
       {item.image && <img className="item-hero" src={item.image} alt={item.name} />}
-      {PHOTO_CREDITS[item.id] && (
-        <a className="photo-credit" href={PHOTO_CREDITS[item.id].source} target="_blank" rel="noreferrer">
-          Photo: {PHOTO_CREDITS[item.id].author} · {PHOTO_CREDITS[item.id].license}
+      {credit && (
+        <a className="photo-credit" href={credit.source} target="_blank" rel="noreferrer">
+          Photo: {credit.author} · {credit.license}
         </a>
       )}
       <p className="muted item-desc">{item.description}</p>
@@ -624,13 +631,14 @@ function BillCard({
   )
 }
 
-function PhotoCreditsSheet({ onClose }: { onClose: () => void }) {
+function PhotoCreditsSheet({ items, onClose }: { items: MenuItem[]; onClose: () => void }) {
   return (
     <Sheet title="Photo credits" onClose={onClose}>
       <p className="muted small">Sample photos from Wikimedia Commons, used under the licences below.</p>
       <ul className="line-list credits-list">
-        {MENU.filter((m) => PHOTO_CREDITS[m.id]).map((m) => {
-          const c = PHOTO_CREDITS[m.id]
+        {items.flatMap((m) => {
+          const c = creditForImage(m.image)
+          if (!c) return []
           return (
             <li key={m.id} className="line">
               <div className="grow">

@@ -33,6 +33,13 @@ export default function HomePage() {
           <strong>Front of house</strong>
           <span>Seat guests, generate table QR codes, serve and settle bills</span>
         </Link>
+        <Link to="/admin" className="screen-card">
+          <span className="screen-icon">
+            <Icon name="list" size={20} />
+          </span>
+          <strong>Menu admin</strong>
+          <span>Add and edit dishes, prices, photos and dietary info; mark dishes sold out</span>
+        </Link>
         <div className="screen-card screen-card-static">
           <span className="screen-icon">
             <Icon name="phone" size={20} />

@@ -53,6 +53,11 @@ export default function StaffPage() {
           OMS
         </Link>
         <span className="topbar-title">Front of house</span>
+        <nav>
+          <Link to="/admin">
+            Menu admin <Icon name="arrowRight" size={16} />
+          </Link>
+        </nav>
       </header>
 
       {alerts.length > 0 && (

@@ -22,3 +22,9 @@ export const PHOTO_CREDITS: Record<string, PhotoCredit> = {
   'mango-sticky-rice': { author: "Dennis Wong from Hong Kong, Hong Kong", license: "CC BY 2.0", licenseUrl: "https://creativecommons.org/licenses/by/2.0", source: "https://commons.wikimedia.org/wiki/File:Mango_sticy_rice_(3859549574).jpg" },
   'coconut-ice-cream': { author: "Index Librorum Permissorum", license: "CC0", licenseUrl: "http://creativecommons.org/publicdomain/zero/1.0/deed.en", source: "https://commons.wikimedia.org/wiki/File:Coconut_Ice_Cream_2018-08-03_(1).jpg" },
 }
+
+/** Credit for a bundled sample photo (/menu/<name>.jpg); uploaded or linked photos have none */
+export function creditForImage(image?: string): PhotoCredit | undefined {
+  const name = image?.match(/^\/menu\/([\w-]+)\.jpg$/)?.[1]
+  return name ? PHOTO_CREDITS[name] : undefined
+}
