@@ -5,7 +5,7 @@ import { Icon } from '../../components/Icon'
 import { Sheet, StatusBadge } from '../../components/shared'
 import { useMediaQuery } from '../../components/useMediaQuery'
 import { CATEGORIES, MENU, RESTAURANT_NAME, TABLES } from '../../demo/mockData'
-import { calculateBill, formatTHB } from '../../demo/money'
+import { calculateBill, formatAUD } from '../../demo/money'
 import { allergenSentence, DIETARY_LABEL } from '../../demo/dietary'
 import { PHOTO_CREDITS } from '../../demo/photoCredits'
 import PaySheet from './PaySheet'
@@ -53,7 +53,7 @@ export default function CustomerPage() {
     return (
       <SessionMessage
         title="Thank you for dining with us!"
-        text={`Table ${session.tableNumber}'s session has ended${session.payment ? ` and was paid (${formatTHB(session.payment.amount)})` : ''}. Please ask our staff if you'd like to order again.`}
+        text={`Table ${session.tableNumber}'s session has ended${session.payment ? ` and was paid (${formatAUD(session.payment.amount)})` : ''}. Please ask our staff if you'd like to order again.`}
       />
     )
   }
@@ -271,7 +271,7 @@ function OrderingApp({ session, soldOut }: { session: TableSession; soldOut: str
                   </div>
                 )}
                 <button className="btn btn-primary btn-block" disabled={cart.length === 0} onClick={sendOrder}>
-                  Send to kitchen{cartCount > 0 && ` · ${formatTHB(cartTotal)}`}
+                  Send to kitchen{cartCount > 0 && ` · ${formatAUD(cartTotal)}`}
                 </button>
               </section>
             ) : (
@@ -295,7 +295,7 @@ function OrderingApp({ session, soldOut }: { session: TableSession; soldOut: str
           <button className="btn btn-primary btn-block" onClick={() => setCartOpen(true)}>
             <span className="pill pill-light">{cartCount}</span>
             <span>View order</span>
-            <span>{formatTHB(cartTotal)}</span>
+            <span>{formatAUD(cartTotal)}</span>
           </button>
         </div>
       )}
@@ -372,7 +372,7 @@ function MenuItemRow({ item, soldOut, onPick }: { item: MenuItem; soldOut: boole
         </span>
         <span className="menu-desc">{item.description}</span>
         <DietaryInfo item={item} />
-        {item.image && <span className="menu-price">{soldOut ? 'Sold out' : formatTHB(item.price)}</span>}
+        {item.image && <span className="menu-price">{soldOut ? 'Sold out' : formatAUD(item.price)}</span>}
       </span>
       {item.image ? (
         <span className="menu-photo">
@@ -385,7 +385,7 @@ function MenuItemRow({ item, soldOut, onPick }: { item: MenuItem; soldOut: boole
         </span>
       ) : (
         <span className="menu-side">
-          <span className="menu-price">{soldOut ? 'Sold out' : formatTHB(item.price)}</span>
+          <span className="menu-price">{soldOut ? 'Sold out' : formatAUD(item.price)}</span>
           {!soldOut && (
             <span className="menu-add">
               <Icon name="plus" size={16} />
@@ -440,7 +440,7 @@ function ItemSheet({ item, onClose, onAdd }: { item: MenuItem; onClose: () => vo
               onAdd({ id: randomToken(6), menuItemId: item.id, name: item.name, unitPrice, quantity: qty, options, note: note.trim() })
             }
           >
-            Add · {formatTHB(unitPrice * qty)}
+            Add · {formatAUD(unitPrice * qty)}
           </button>
         </div>
       }
@@ -452,7 +452,7 @@ function ItemSheet({ item, onClose, onAdd }: { item: MenuItem; onClose: () => vo
         </a>
       )}
       <p className="muted item-desc">{item.description}</p>
-      <div className="item-price">{formatTHB(item.price)}</div>
+      <div className="item-price">{formatAUD(item.price)}</div>
       <div className="item-dietary">
         <DietaryInfo item={item} />
         {!item.allergens?.length && <span className="muted small">No common allergens listed.</span>}
@@ -472,7 +472,7 @@ function ItemSheet({ item, onClose, onAdd }: { item: MenuItem; onClose: () => vo
                 onChange={() => toggle(g.id, c.id, g.type === 'single')}
               />
               <span className="grow">{c.name}</span>
-              {c.price > 0 && <span className="muted">+{formatTHB(c.price)}</span>}
+              {c.price > 0 && <span className="muted">+{formatAUD(c.price)}</span>}
             </label>
           ))}
         </fieldset>
@@ -503,7 +503,7 @@ function CartLines({
             <div className="line-name">{l.name}</div>
             {l.options.length > 0 && <div className="muted small">{l.options.map((o) => o.choiceName).join(', ')}</div>}
             {l.note && <div className="muted small">“{l.note}”</div>}
-            <div className="small">{formatTHB(l.unitPrice * l.quantity)}</div>
+            <div className="small">{formatAUD(l.unitPrice * l.quantity)}</div>
           </div>
           <div className="stepper stepper-sm">
             <button onClick={() => changeQty(l.id, -1)} aria-label="Less">
@@ -538,7 +538,7 @@ function CartSheet({
       onClose={onClose}
       footer={
         <button className="btn btn-primary btn-block" disabled={lines.length === 0} onClick={onSend}>
-          Send to kitchen · {formatTHB(total)}
+          Send to kitchen · {formatAUD(total)}
         </button>
       }
     >
@@ -604,21 +604,13 @@ function BillCard({
   return (
     <section className="card bill">
       <h3>Bill so far</h3>
-      <div className="row between">
-        <span>Subtotal</span>
-        <span>{formatTHB(bill.subtotal)}</span>
-      </div>
-      <div className="row between muted">
-        <span>Service charge 10%</span>
-        <span>{formatTHB(bill.serviceCharge)}</span>
-      </div>
-      <div className="row between muted">
-        <span>VAT 7%</span>
-        <span>{formatTHB(bill.vat)}</span>
-      </div>
       <div className="row between total">
         <span>Total</span>
-        <span>{formatTHB(bill.total)}</span>
+        <span>{formatAUD(bill.total)}</span>
+      </div>
+      <div className="row between muted">
+        <span>Includes GST</span>
+        <span>{formatAUD(bill.gst)}</span>
       </div>
       <div className="row gap">
         <button className="btn btn-outline grow" disabled={!!session.billRequestedAt} onClick={onRequestBill}>

@@ -11,7 +11,7 @@ export type Table = {
 export type OptionChoice = {
   id: string
   name: string
-  /** Extra price in satang (1 THB = 100 satang) */
+  /** Extra price in cents (1 AUD = 100 cents) */
   price: number
 }
 
@@ -36,7 +36,7 @@ export type MenuItem = {
   categoryId: string
   name: string
   description: string
-  /** Price in satang */
+  /** Price in cents */
   price: number
   /** Photo URL; the demo menu has none and shows a text-only layout */
   image?: string
@@ -58,7 +58,7 @@ export type OrderItem = {
   id: string
   menuItemId: string
   name: string
-  /** Unit price at time of ordering, including options, in satang */
+  /** Unit price at time of ordering, including options, in cents */
   unitPrice: number
   quantity: number
   options: SelectedOption[]

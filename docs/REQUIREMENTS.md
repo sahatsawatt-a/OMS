@@ -8,12 +8,14 @@ Status: draft. Requirements marked *assumption* and the open questions in sectio
 | ------- | ---------- | ---------------------------------------------------------------------- |
 | 0.1     | 2026-10-14 | Generic online shop baseline (RQ-1)                                     |
 | 0.2     | 2026-10-14 | Reworked for restaurant dine-in QR ordering (RQ-2); phase 1 = frontend demo (RQ-3) |
+| 0.3     | 2026-10-15 | Customer is Ying Thai 2 (Thai restaurant, Melbourne): AUD prices including 10% GST, no service charge (PR #1, RQ-8) |
 
 ## 1. Requests (word for word)
 
 - **RQ-1:** "Ordering Management System. Frontend: React, Backend: Python, Payment: Stripe, Database: MySQL"
 - **RQ-2:** "this will be for restaurant. the flow will start from when customer walk in to shop and sit down, we'll generate QR code that contain table number (just for reference of which table we need to serve to) and session (to track the order data and state). then the menu will appear to select."
 - **RQ-3:** "I need only frontend demo. no backend implementation yet."
+- **RQ-8 (PR #1 by MikkiSnowz):** "Feat/aud dollar change title" — rename to Ying Thai 2, Melbourne; prices in Australian dollars.
 
 ## 2. The flow
 
@@ -77,7 +79,7 @@ Priority: **H** first release, **N** normal, **L** later.
 
 **REQ-20 Diners send orders to the kitchen in rounds (H)** — sending creates an order round on the session; items reach the kitchen display within seconds; any number of rounds while the session is open; each item keeps its price at time of ordering; diner sees confirmation.
 
-**REQ-21 Diners follow item status and the running bill (N)** — every item with status (sent, cooking, ready, served, cancelled), updated live; running total with service charge and VAT.
+**REQ-21 Diners follow item status and the running bill (N)** — every item with status (sent, cooking, ready, served, cancelled), updated live; running total (prices include GST).
 
 **REQ-24 Diners can call a waiter and ask for the bill (N)** — one tap; staff see an alert with the table number; staff acknowledge to clear it.
 
@@ -90,11 +92,11 @@ Priority: **H** first release, **N** normal, **L** later.
 
 ### Payment
 **REQ-25 The table bill is paid by Stripe on the phone or at the counter, then the session closes (H)**
-- Bill lists all non-cancelled items with subtotal, service charge, VAT and total.
+- Bill lists all non-cancelled items and the total, showing the GST included.
 - Diner can pay on their phone with Stripe (card data never reaches our servers); staff can record cash or card-terminal payment instead.
 - A Stripe payment counts only after a signature-verified webhook.
 - When fully paid, the session closes, the QR stops working and the table becomes free.
-- *Assumptions:* pay once at the end of the meal; THB; 10% service charge and 7% VAT added on top.
+- *Assumptions:* pay once at the end of the meal; AUD; menu prices include 10% GST (shown on the bill); no service charge.
 
 **REQ-10 Admins can refund fully or partially through Stripe (N)**
 
@@ -110,7 +112,7 @@ Priority: **H** first release, **N** normal, **L** later.
 - **REQ-13 Stack (constraint):** React + TypeScript frontend, Python (FastAPI) backend, Stripe, MySQL; Docker Compose for local dev.
 - **REQ-29 Phase 1 is a frontend-only demo with mock data (constraint).** See section 7.
 - **REQ-14 Security:** no card data on our servers; verified Stripe webhooks; secrets only in env vars; HTTPS; backend input validation. Session tokens unguessable and useless once closed.
-- **REQ-15 Money and records:** amounts as integer satang with currency; orders/payments never hard-deleted; schema changes via migrations; daily backups.
+- **REQ-15 Money and records:** amounts as integer cents with currency; orders/payments never hard-deleted; schema changes via migrations; daily backups.
 - **Usability (RQ-6):** guest ordering works on phone (single column), iPad portrait (grid of dish cards) and iPad landscape / PC (menu grid with the order always visible in a side panel); staff app works on tablet and phone; kitchen display readable at a distance.
 - **Real-time:** order and status changes reach other screens within ~2 seconds (WebSocket/SSE in the real system).
 
@@ -127,15 +129,15 @@ Built in `frontend/` with mock data; no backend calls.
 
 - **Sample data:** 8 tables and an 18-item Thai menu. Tables 2, 3, 5, 6 and 7 are seated with orders at every stage, plus a waiter call and a bill request. Two items are sold out.
 - **State** lives in the browser (`localStorage`), so tabs in the same browser update each other live. A phone scanning a QR made on another device can't see that browser's data; it offers to continue the session locally instead.
-- **Payment** uses real Stripe in sandbox mode when keys are set (card and PromptPay, confirmed server-side by `POST /api/payments/intents` and `GET /api/payments/intents/{id}`); otherwise simulated. The amount comes from the browser's mock bill, which the real backend must calculate itself.
+- **Payment** uses real Stripe in sandbox mode when keys are set (card, charged in AUD, confirmed server-side by `POST /api/payments/intents` and `GET /api/payments/intents/{id}`); otherwise simulated. The amount comes from the browser's mock bill, which the real backend must calculate itself.
 - **Search** filters the menu as you type.
 
 ## 8. Open questions
 
 1. **Payment timing:** pay at the end of the meal, or pay for each order before it goes to the kitchen?
-2. **Service charge and VAT:** is there a service charge (10%?), and are menu prices VAT-inclusive? Tax invoices needed?
+2. **Surcharges and GST:** any Sunday/public-holiday or card surcharge? Are tax invoices needed (required on request for sales over $82.50 incl. GST)?
 3. **Split bill** between diners?
-4. **Payment methods:** cards, PromptPay, cash?
+4. **Payment methods:** cards, Apple Pay / Google Pay, cash?
 5. **QR delivery:** printed slip, or shown on a staff tablet / table stand?
 6. **Shared phones:** do phones at one table share a cart, or each keep their own cart on the same table bill?
 7. **Order approval:** must staff confirm a diner's order before it goes to the kitchen?

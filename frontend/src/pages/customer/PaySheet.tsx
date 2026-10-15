@@ -2,7 +2,7 @@ import { Elements, PaymentElement, useElements, useStripe } from '@stripe/react-
 import { useEffect, useState } from 'react'
 import { Icon } from '../../components/Icon'
 import { Sheet } from '../../components/shared'
-import { formatTHB } from '../../demo/money'
+import { formatAUD } from '../../demo/money'
 import {
   createIntent,
   fetchPaymentConfig,
@@ -120,21 +120,20 @@ function StripeCheckout({ amount, sessionToken, onClose, onPaid, intentId }: Pro
       onClose={onClose}
       footer={
         <button className="btn btn-primary btn-block" disabled={!stripe || !ready || paying} onClick={pay}>
-          {paying ? 'Processing…' : `Pay ${formatTHB(amount)}`}
+          {paying ? 'Processing…' : `Pay ${formatAUD(amount)}`}
         </button>
       }
     >
       <div className="pay-test-note">
         <strong>Stripe test mode.</strong> Use card <code>4242 4242 4242 4242</code>, any future expiry, any CVC.
       </div>
-      <PaymentElement options={{ layout: 'tabs', paymentMethodOrder: ['card', 'promptpay'] }} onReady={() => setReady(true)} />
+      <PaymentElement options={{ layout: 'tabs', paymentMethodOrder: ['card'] }} onReady={() => setReady(true)} />
       {error && <p className="pay-error">{error}</p>}
     </Sheet>
   )
 }
 
 function SimulatedPaySheet({ amount, onClose, onPaid, reason }: Props & { reason: string }) {
-  const [method, setMethod] = useState<'card' | 'promptpay'>('card')
   const [paying, setPaying] = useState(false)
 
   const pay = () => {
@@ -148,39 +147,32 @@ function SimulatedPaySheet({ amount, onClose, onPaid, reason }: Props & { reason
       onClose={onClose}
       footer={
         <button className="btn btn-primary btn-block" disabled={paying} onClick={pay}>
-          {paying ? 'Processing…' : `Pay ${formatTHB(amount)}`}
+          {paying ? 'Processing…' : `Pay ${formatAUD(amount)}`}
         </button>
       }
     >
       <p className="muted small">Simulated checkout: {reason} No card is charged.</p>
       <div className="pay-methods">
-        <button className={method === 'card' ? 'active' : ''} onClick={() => setMethod('card')}>
+        <button className="active">
           <Icon name="card" /> Card
         </button>
-        <button className={method === 'promptpay' ? 'active' : ''} onClick={() => setMethod('promptpay')}>
-          <Icon name="qr" /> PromptPay
-        </button>
       </div>
-      {method === 'card' ? (
-        <div className="fake-card">
-          <label className="field">
-            <span>Card number</span>
-            <input defaultValue="4242 4242 4242 4242" inputMode="numeric" />
+      <div className="fake-card">
+        <label className="field">
+          <span>Card number</span>
+          <input defaultValue="4242 4242 4242 4242" inputMode="numeric" />
+        </label>
+        <div className="row gap">
+          <label className="field grow">
+            <span>Expiry</span>
+            <input defaultValue="12 / 30" />
           </label>
-          <div className="row gap">
-            <label className="field grow">
-              <span>Expiry</span>
-              <input defaultValue="12 / 30" />
-            </label>
-            <label className="field grow">
-              <span>CVC</span>
-              <input defaultValue="123" inputMode="numeric" />
-            </label>
-          </div>
+          <label className="field grow">
+            <span>CVC</span>
+            <input defaultValue="123" inputMode="numeric" />
+          </label>
         </div>
-      ) : (
-        <p className="muted">Stripe shows a PromptPay QR to scan with your banking app.</p>
-      )}
+      </div>
     </Sheet>
   )
 }

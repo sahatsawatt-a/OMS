@@ -6,9 +6,9 @@ from app.core.config import get_settings
 
 router = APIRouter(prefix="/payments", tags=["payments"])
 
-# Stripe's minimum charge for THB is ฿10; cap demo payments at ฿100,000
-MIN_AMOUNT_SATANG = 1_000
-MAX_AMOUNT_SATANG = 10_000_000
+# Stripe's minimum charge for AUD is $0.50; cap demo payments at $10,000
+MIN_AMOUNT_CENTS = 50
+MAX_AMOUNT_CENTS = 1_000_000
 
 
 class PaymentConfig(BaseModel):
@@ -19,7 +19,7 @@ class PaymentConfig(BaseModel):
 class CreateIntentRequest(BaseModel):
     # Phase 1 demo: the bill total comes from the browser's mock data. Once orders live in
     # the database, the server must calculate the amount from the session instead.
-    amount: int = Field(ge=MIN_AMOUNT_SATANG, le=MAX_AMOUNT_SATANG, description="Amount in satang")
+    amount: int = Field(ge=MIN_AMOUNT_CENTS, le=MAX_AMOUNT_CENTS, description="Amount in cents")
     table_number: int = Field(ge=1)
     session_token: str = Field(min_length=8, max_length=64)
 
@@ -58,7 +58,7 @@ def create_intent(body: CreateIntentRequest) -> IntentResponse:
     try:
         intent = stripe.PaymentIntent.create(
             amount=body.amount,
-            currency="thb",
+            currency="aud",
             automatic_payment_methods={"enabled": True},
             description=f"Table {body.table_number} bill",
             metadata={"table_number": str(body.table_number), "session_token": body.session_token},
