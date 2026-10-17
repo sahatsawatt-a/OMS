@@ -1,0 +1,560 @@
+/* Chart colour roles (validated: 3-slot categorical on white, see dataviz palette) */
+.reports {
+  --series-1: #2a78d6;
+  --series-2: #eb6834;
+  --series-3: #1baf7a;
+  --gridline: #ebe8e1;
+  --baseline: #c9c5bb;
+  --axis-ink: #74706a;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.reports-filters {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.segmented {
+  display: inline-flex;
+  padding: 3px;
+  background: var(--surface-2);
+  border-radius: var(--radius-sm);
+}
+.segmented button {
+  min-height: 36px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 5px;
+  background: none;
+  font-size: 0.88rem;
+  font-weight: 500;
+  color: var(--muted);
+  cursor: pointer;
+}
+.segmented button.active {
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: 0 1px 2px rgb(28 27 25 / 10%);
+}
+
+/* KPI row */
+.kpis {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+.stat {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.stat-label {
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+.stat-value {
+  font-size: 1.75rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  line-height: 1.15;
+}
+.stat-delta {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+.stat-delta.up {
+  color: var(--success);
+}
+.stat-delta.down {
+  color: var(--danger);
+}
+.stat-delta .muted {
+  font-weight: 400;
+}
+
+/* Chart cards */
+.report-card {
+  padding: 18px 20px 20px;
+  min-width: 0;
+}
+.report-card-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+.report-card-head h2 {
+  font-size: 1rem;
+  font-weight: 600;
+}
+.report-card-head p {
+  margin: 2px 0 0;
+}
+.chart-empty {
+  padding: 24px 0;
+  margin: 0;
+}
+.reports-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+  gap: 16px;
+  align-items: start;
+}
+.reports-col {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.reports-note {
+  margin: 4px 0 0;
+}
+
+/* Column chart */
+.colchart {
+  --plot-h: 220px;
+  padding-left: 44px;
+}
+.colchart-plot {
+  position: relative;
+  height: var(--plot-h);
+}
+.colchart-grid .gridline {
+  position: absolute;
+  left: 0;
+  right: 0;
+  border-top: 1px solid var(--gridline);
+}
+.colchart-grid .gridline:first-child {
+  border-top-color: var(--baseline);
+}
+.colchart-grid .gridline span {
+  position: absolute;
+  right: calc(100% + 8px);
+  top: -0.55em;
+  font-size: 0.72rem;
+  color: var(--axis-ink);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.colchart-cols {
+  position: absolute;
+  inset: 0;
+  display: flex;
+}
+.col {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  border: 0;
+  padding: 0;
+  background: none;
+  cursor: default;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+.col:focus-visible {
+  outline: 2px solid var(--text);
+  outline-offset: -2px;
+  border-radius: 4px;
+}
+.col .bar {
+  position: relative;
+  width: 70%;
+  max-width: 24px;
+  min-height: 0;
+  background: var(--series-1);
+  border-radius: 4px 4px 0 0;
+  transition: filter 0.12s;
+}
+.col.hover .bar {
+  filter: brightness(1.15);
+}
+.col .peak {
+  position: absolute;
+  bottom: calc(100% + 4px);
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+}
+.col .tip {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 8px 10px;
+  background: var(--text);
+  color: var(--bg);
+  border-radius: var(--radius-sm);
+  font-size: 0.76rem;
+  text-align: left;
+  white-space: nowrap;
+  pointer-events: none;
+  box-shadow: var(--shadow);
+}
+.col .tip.left {
+  left: auto;
+  right: 50%;
+  transform: none;
+}
+.col .tip strong {
+  font-size: 0.9rem;
+}
+.col .tip span {
+  opacity: 0.8;
+}
+.colchart-x {
+  display: flex;
+  margin-top: 6px;
+}
+.colchart-x span {
+  flex: 1;
+  min-width: 0;
+  text-align: center;
+  overflow: visible;
+  font-size: 0.72rem;
+  color: var(--axis-ink);
+  white-space: nowrap;
+  overflow: visible;
+}
+
+/* Top dishes: horizontal bars, value at the tip */
+.dishbars {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  /* One grid for all rows so every bar starts at the same x */
+  display: grid;
+  grid-template-columns: minmax(90px, max-content) minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px 12px;
+  font-size: 0.86rem;
+}
+.dishbars li {
+  display: contents;
+}
+.dish-name {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.dish-track {
+  display: block;
+  height: 14px;
+}
+.dish-bar {
+  display: block;
+  height: 100%;
+  background: var(--series-1);
+  border-radius: 0 4px 4px 0;
+}
+.dish-value {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  font-size: 0.82rem;
+}
+
+/* Payment share: one stacked bar with 2px surface gaps, legend carries the labels */
+.share-bar {
+  display: flex;
+  gap: 2px;
+  height: 18px;
+  border-radius: 4px;
+  overflow: hidden;
+}
+.seg {
+  min-width: 4px;
+  transition: filter 0.12s;
+}
+.seg.hover {
+  filter: brightness(1.12);
+}
+.seg-stripe {
+  background: var(--series-1);
+}
+.seg-card_terminal {
+  background: var(--series-2);
+}
+.seg-cash {
+  background: var(--series-3);
+}
+.share-legend {
+  list-style: none;
+  margin: 14px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 0.86rem;
+}
+.share-legend li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-variant-numeric: tabular-nums;
+}
+.share-legend li.hover {
+  font-weight: 600;
+}
+.swatch {
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+
+/* Tables (also the table view of each chart) */
+.table-wrap {
+  overflow-x: auto;
+}
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.86rem;
+}
+.data-table th {
+  text-align: left;
+  font-weight: 500;
+  font-size: 0.76rem;
+  color: var(--muted);
+  padding: 0 8px 8px 0;
+  border-bottom: 1px solid var(--border);
+}
+.data-table td {
+  padding: 8px 8px 8px 0;
+  border-bottom: 1px solid var(--border);
+}
+.data-table tr:last-child td {
+  border-bottom: 0;
+}
+.data-table .num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 1000px) {
+  .reports-grid {
+    grid-template-columns: 1fr;
+  }
+}
+@media (max-width: 760px) {
+  .kpis {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .stat-value {
+    font-size: 1.4rem;
+  }
+  .colchart {
+    --plot-h: 180px;
+  }
+  /* Each dish on its own: name and value on one line, the bar full width below */
+  .dishbars {
+    grid-template-columns: minmax(0, 1fr);
+    row-gap: 12px;
+  }
+  .dishbars li {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 4px 12px;
+  }
+  .dish-name {
+    grid-row: 1;
+  }
+  .dish-value {
+    grid-row: 1;
+    grid-column: 2;
+  }
+  .dish-track {
+    grid-row: 2;
+    grid-column: 1 / -1;
+  }
+}
+
+/* Report sections: Sales / Busiest times / GST / BAS */
+.report-sections {
+  display: flex;
+  gap: 20px;
+  border-bottom: 1px solid var(--border);
+}
+.report-sections button {
+  padding: 8px 0 10px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  background: none;
+  font-weight: 500;
+  color: var(--muted);
+  cursor: pointer;
+}
+.report-sections button.active {
+  color: var(--text);
+  border-bottom-color: var(--accent);
+}
+
+/* Range controls */
+.reports-filters .presets {
+  max-width: 100%;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.reports-filters .presets button {
+  white-space: nowrap;
+}
+.custom-range,
+.compare-select {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+.custom-range label,
+.compare-select {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.custom-range input,
+.compare-select select {
+  min-height: 36px;
+  padding: 0 8px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 0.88rem;
+}
+.compare-select {
+  margin-left: auto;
+}
+.card-actions {
+  justify-content: flex-end;
+}
+.small-seg button {
+  min-height: 30px;
+  padding: 0 10px;
+  font-size: 0.8rem;
+}
+
+.cancelled-card h2 {
+  font-size: 1rem;
+  font-weight: 600;
+}
+.cancelled-card p {
+  margin: 2px 0 0;
+  max-width: 260px;
+}
+.cancelled-figures {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+}
+.cancelled-figures strong {
+  font-size: 1.5rem;
+  font-weight: 600;
+}
+
+.kpis.two {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.data-table .total-row td {
+  font-weight: 600;
+  border-top: 1px solid var(--border-strong);
+}
+
+/* Busiest times */
+.busy-headline {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.busy-peak {
+  font-size: 1.5rem;
+  font-weight: 600;
+}
+.heat-grid {
+  display: grid;
+  gap: 3px;
+  align-items: center;
+}
+.heat-hour {
+  font-size: 0.7rem;
+  color: var(--axis-ink);
+  white-space: nowrap;
+  overflow: visible;
+}
+.heat-day {
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+.heat-cell {
+  aspect-ratio: 1.6;
+  min-height: 22px;
+  border: 0;
+  border-radius: 4px;
+  padding: 0;
+  cursor: default;
+}
+.heat-zero {
+  background: var(--surface-2);
+}
+.heat-cell.active,
+.heat-cell:focus-visible {
+  outline: 2px solid var(--text);
+  outline-offset: 1px;
+}
+.heat-readout {
+  min-height: 1.4em;
+  margin: 12px 0 6px;
+  font-size: 0.86rem;
+}
+.heat-legend {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.heat-legend-ramp {
+  display: inline-flex;
+  gap: 2px;
+}
+.heat-swatch {
+  width: 18px;
+  height: 12px;
+  border-radius: 3px;
+}
+.heat-legend-max {
+  margin-left: auto;
+}
+
+@media (max-width: 760px) {
+  .compare-select {
+    margin-left: 0;
+  }
+  .heat-cell {
+    aspect-ratio: 1;
+    min-height: 16px;
+  }
+  .heat-grid {
+    gap: 2px;
+  }
+  .kpis.two {
+    grid-template-columns: 1fr;
+  }
+}

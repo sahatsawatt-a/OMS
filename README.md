@@ -1,75 +1,95 @@
 # OMS — Ordering Management System
 
-Restaurant ordering with table QR codes. When guests sit down, staff open a **table session** and show a QR code; guests scan it, order from their phone in rounds, the kitchen sees the orders live, and the bill is paid by phone (Stripe) or at the table.
+Restaurant ordering with table QR codes, **pay first**, built for **Ying Thai 2** (Thai restaurant, Melbourne). When guests sit down, staff open a **table session** and show a QR code; guests scan it, order and pay at checkout (on their phone with Stripe, or at the counter), and staff bring the food to the table. Only paid orders go through; there is no bill at the end.
 
-> **Current phase: frontend demo.** The React app runs on mock data stored in the browser, so you can click through the whole flow without the backend. The FastAPI + MySQL backend is scaffolded but not implemented yet.
+> **Current phase: working demo with a real backend.** FastAPI + MySQL hold the menu, tables, table sessions and orders; the server prices every order and confirms Stripe payments itself. The menu is Ying Thai 2's own printed menu (92 dishes, Thai names, dish numbers). Payments use Stripe **test mode**. Staff logins per person (REQ-28) and a kitchen screen are not part of this phase.
 
-## Try the demo (fastest)
+## Try it
 
 ```bash
-cd frontend
-npm install
-npm run dev          # http://localhost:5173
+cp .env.example .env && cp backend/.env.example backend/.env   # then fill in keys, see below
+docker compose up -d --build
 ```
 
-Or with Docker: `docker compose up -d --build`, then open <http://localhost:5180>.
+Open <http://localhost:5180>. Staff screens ask once for the **staff key** (`STAFF_API_KEY` in `backend/.env`).
 
 | Screen          | Path                           | What to try                                                   |
 | --------------- | ------------------------------ | ------------------------------------------------------------- |
-| Home            | `/`                            | Overview, links to every screen, reset sample data            |
-| Front of house  | `/staff`                       | Tap a free table → seat guests → QR code; open a seated table; settle the bill |
-| Customer menu   | `/order?table=N&session=TOKEN` | Opened from the QR: search dishes, dietary labels and allergens, order, follow status, call waiter, pay. Adapts to phone, iPad and PC |
+| Home            | `/`                            | Overview, links to every screen; with the staff key: links to seated tables, reset sample data |
+| Front of house  | `/staff`                       | Seat guests → QR code; take counter payments (Card / Cash); mark food served; clear the table when guests leave |
+| Customer menu   | `/order?table=N&session=TOKEN` | Opened from the QR: Ying Thai 2's menu with Thai names and dish numbers, search by name, number or label (e.g. `32`, `gluten free`), options with exact printed prices, pay on phone (Stripe) or at the counter, follow orders, call waiter |
 | Menu admin      | `/admin`                       | Add, edit, hide or delete dishes (price, photo, dietary labels, allergens, options); mark sold out; manage categories |
+| Reports         | `/admin?tab=reports`           | Sales, busiest times, GST / BAS. Today's real orders plus generated sample history |
 
-Menu photos are openly licensed images from Wikimedia Commons (credits in [frontend/public/menu/CREDITS.md](frontend/public/menu/CREDITS.md) and on the menu's "Photo credits" link).
+**Designs.** A thin demo bar on every screen switches between three looks, remembered per device; `?design=heritage|night|classic` in a link overrides it:
 
-The demo starts with sample data (tables 2, 3, 5, 6 and 7 seated with orders at different stages). Open Front of house and a Customer menu in separate tabs of the same browser and they update each other live.
+- **Heritage** (default): Ying Thai 2's printed menu, cream paper, navy serif, gold bands, numbered dishes.
+- **Night**: their logo and website, near-black and gold, photo cards.
+- **Classic**: clean and neutral.
 
-**Stripe test payments:** put your Stripe sandbox keys in `backend/.env` (or the root `.env`) as `STRIPE_SECRET_KEY=sk_test_…` and `STRIPE_PUBLISHABLE_KEY=pk_test_…`, then `docker compose up -d --force-recreate backend`. "Pay now" on the customer menu then opens Stripe's real payment form (card); pay with test card `4242 4242 4242 4242`, any future expiry, any CVC. Without keys it falls back to a simulated checkout. This is the only backend piece in phase 1: it creates the payment and confirms it with Stripe; the bill amount still comes from the browser's mock data.
+The demo starts with sample tables: 2, 3, 5, 6 and 7 seated with orders at different stages, order #107 waiting at the counter. "Reset to sample data" on the home page puts that back. Dish photos are cut from Ying Thai 2's printed menu (`frontend/public/menu/yt/<dish number>.jpg`).
 
-**Public link via ngrok:** put `NGROK_AUTHTOKEN` and `NGROK_URL` (your reserved ngrok domain) in `.env`, set `VITE_PUBLIC_BASE_URL=https://<NGROK_URL>` in `frontend/.env`, then run `docker compose --profile tunnel up -d`. Table QR codes will then open on any phone.
-The tunnel serves a **production build** (nginx, `web` service, also on <http://localhost:5181>), not the dev server, so it loads fast on phones and in automated browser checks. It does not live-reload: after code changes run `docker compose --profile tunnel up -d --build web`. The QR base URL is built in from `NGROK_URL`.
+**Stripe test payments:** put your sandbox keys in `backend/.env` as `STRIPE_SECRET_KEY=sk_test_…` and `STRIPE_PUBLISHABLE_KEY=pk_test_…`, then `docker compose up -d backend`. "Pay on phone" opens Stripe's payment form; pay with test card `4242 4242 4242 4242`, any future expiry, any CVC. Without keys (and with `DEMO_MODE=true`) checkout shows a simulated card instead.
 
-**Scanning with a real phone on the same Wi-Fi (no ngrok):** set `VITE_PUBLIC_BASE_URL` in `frontend/.env` to your computer's LAN address (e.g. `http://192.168.1.20:5180`) so the QR code points somewhere the phone can reach. Because demo data lives in each browser, the phone will offer to continue that table's session locally.
+**Public link via ngrok:** put `NGROK_AUTHTOKEN` and `NGROK_URL` (your reserved ngrok domain) in `.env`, then run `docker compose --profile tunnel up -d`. Table QR codes then open on any phone.
+The tunnel serves a **production build** (nginx, `web` service, also on <http://localhost:5181>), not the dev server. It does not live-reload: after code changes run `docker compose --profile tunnel up -d --build web`. The QR base URL is built in from `NGROK_URL`.
+
+**Who can call the API:** staff and admin endpoints need the `X-Staff-Key` header (`STAFF_API_KEY`, or `BROWSER_CHECK_KEY` for the automated Zyrenn browser checks; remove that one to revoke them). Guest endpoints need an open table session token, which stops working when staff clear the table. Reading the menu, the health check and the Stripe publishable-key config are public.
 
 | Layer    | Tech                                                   |
 | -------- | ------------------------------------------------------ |
 | Frontend | React 19 + TypeScript (Vite), React Router, Stripe.js  |
 | Backend  | Python 3.12, FastAPI, SQLAlchemy 2, Alembic            |
-| Payment  | Stripe (Payment Intents + webhooks)                    |
+| Payment  | Stripe (Payment Intents, deferred-intent Payment Element, webhooks) |
 | Database | MySQL 8.4                                              |
 | Dev env  | Docker Compose                                         |
+
+## How it works
+
+```
+Staff seat guests ──► POST /api/tables/{id}/sessions ──► session token (QR: /order?table=N&session=TOKEN)
+Guest opens QR     ──► GET  /api/sessions/{token}     ──► table, menu, this visit's orders
+Guest pays first   ──► POST /api/sessions/{token}/orders {lines, pay: "stripe" | "counter"}
+                         server prices the lines from the menu in MySQL
+                         stripe:  PaymentIntent for that amount → card form → confirm-payment
+                                  (server asks Stripe; the webhook does the same) → paid, numbered
+                         counter: order #N waits until staff press Card / Cash
+Staff              ──► GET  /api/staff/state (polled every 2 s): tables, sessions, orders, menu
+                       counter-payment · served · close (refused while an order is unpaid)
+```
+
+Order numbers restart at 101 each day (Melbourne time). Money is integer cents, AUD, GST included.
 
 ## Project structure
 
 ```
 OMS/
-├── docker-compose.yml        # db + backend + frontend for local development
-├── .env.example              # host ports and MySQL credentials for compose
+├── docker-compose.yml          # db + backend + frontend; web + ngrok with --profile tunnel
+├── .env.example                # host ports, MySQL credentials, ngrok
 ├── backend/
 │   ├── app/
-│   │   ├── main.py           # FastAPI app, CORS, router
-│   │   ├── core/config.py    # settings read from environment / .env
-│   │   ├── db/               # SQLAlchemy Base and session
-│   │   ├── models/           # ORM models (import them in models/__init__.py)
-│   │   └── api/routes/       # health, payments (Stripe webhook), ...
-│   ├── alembic/              # database migrations
-│   ├── tests/
-│   ├── requirements.txt
-│   └── requirements-dev.txt
+│   │   ├── main.py             # FastAPI app, CORS, router
+│   │   ├── core/               # settings, staff-key check, clock (UTC, Melbourne business day)
+│   │   ├── models/             # menu, tables & sessions, orders
+│   │   ├── api/routes/         # menu, guest (session token), staff, payments (Stripe), demo
+│   │   ├── services/           # order pricing and payment rules, API views
+│   │   ├── menu_data.py        # Ying Thai 2's menu (from their printed menu)
+│   │   └── seed.py             # python -m app.seed [--replace]: menu, tables, sample orders
+│   ├── alembic/versions/       # 0001 schema, 0002 Thai names and dish numbers
+│   └── tests/                  # pytest, SQLite in memory
 ├── frontend/
 │   ├── src/
-│   │   ├── App.tsx           # routes: /, /staff, /order, /admin (kitchen page kept, not routed)
-│   │   ├── demo/             # mock data, seed, browser store (stands in for the API)
-│   │   ├── pages/            # customer, staff, kitchen, home screens
-│   │   ├── components/       # shared UI, icons, formatting helpers
-│   │   └── lib/api.ts        # fetch wrapper for the future backend API
-│   └── vite.config.ts        # dev server proxies /api to the backend
-└── docs/
-    └── REQUIREMENTS.md       # collected requirements
+│   │   ├── App.tsx             # routes: /, /staff, /order, /admin
+│   │   ├── demo/store.ts       # API-backed store (polling) and actions
+│   │   ├── components/         # shared UI, staff-key gate, design switch
+│   │   ├── designs.css         # Heritage and Night designs over the base styles
+│   │   ├── pages/              # customer, staff, admin (menu, reports), home
+│   │   └── lib/api.ts          # fetch wrapper, staff key
+│   └── public/menu/yt/         # dish photos by menu number
+└── docs/REQUIREMENTS.md
 ```
 
-## Full setup guide (with backend)
+## Full setup guide
 
 ### Prerequisites
 
@@ -83,18 +103,19 @@ OMS/
 git clone <your-repo-url> OMS
 cd OMS
 
-cp .env.example .env                       # compose: ports + MySQL credentials
-cp backend/.env.example backend/.env       # backend: Stripe keys, etc.
-cp frontend/.env.example frontend/.env     # frontend: Stripe publishable key
+cp .env.example .env                       # compose: ports, MySQL credentials, ngrok
+cp backend/.env.example backend/.env       # backend: Stripe keys, staff key
+cp frontend/.env.example frontend/.env     # frontend: public base URL for QR codes
 ```
 
-Then fill in your Stripe test keys from <https://dashboard.stripe.com/test/apikeys>:
-
-| File            | Variable                       | Value                  |
-| --------------- | ------------------------------ | ---------------------- |
-| `backend/.env`  | `STRIPE_SECRET_KEY`            | `sk_test_...`          |
-| `backend/.env`  | `STRIPE_WEBHOOK_SECRET`        | `whsec_...` (step 4)   |
-| `frontend/.env` | `VITE_STRIPE_PUBLISHABLE_KEY`  | `pk_test_...`          |
+| File            | Variable                  | Value                                         |
+| --------------- | ------------------------- | --------------------------------------------- |
+| `backend/.env`  | `STRIPE_SECRET_KEY`       | `sk_test_...`                                 |
+| `backend/.env`  | `STRIPE_PUBLISHABLE_KEY`  | `pk_test_...` (sent to the browser by the API) |
+| `backend/.env`  | `STRIPE_WEBHOOK_SECRET`   | `whsec_...` (step 4)                          |
+| `backend/.env`  | `STAFF_API_KEY`           | a long random string; staff type it once per device |
+| `backend/.env`  | `BROWSER_CHECK_KEY`       | optional second key for automated browser checks |
+| `backend/.env`  | `DEMO_MODE`               | `true` allows sample-data reset and simulated payments |
 
 `.env` files are git-ignored. Never commit real keys.
 
@@ -113,11 +134,9 @@ docker compose up -d --build
 
 If a port is already in use on your machine, change `FRONTEND_PORT`, `BACKEND_PORT` or `MYSQL_PORT` in `.env` and run `docker compose up -d` again.
 
-The backend runs `alembic upgrade head` on start, so the database schema is always current.
+On start the backend runs `alembic upgrade head` and `python -m app.seed`, which fills an empty database with the menu, 8 tables and (in demo mode) sample orders. An older demo database with the previous sample menu can be replaced with `docker compose exec backend python -m app.seed --replace` (demo mode only; it deletes all orders).
 
 ### 3. Check it works
-
-Open <http://localhost:5180> for the demo home page. The backend health check:
 
 ```bash
 curl http://localhost:8000/api/health
@@ -126,20 +145,14 @@ curl http://localhost:8000/api/health
 
 ### 4. Stripe webhooks (local)
 
-Install the [Stripe CLI](https://docs.stripe.com/stripe-cli), then:
+The server already confirms each payment with Stripe when the guest's browser reports it; the webhook is the backup for guests who close the page. Install the [Stripe CLI](https://docs.stripe.com/stripe-cli), then:
 
 ```bash
 stripe login
 stripe listen --forward-to localhost:8000/api/payments/webhook
 ```
 
-Copy the `whsec_...` secret it prints into `backend/.env` as `STRIPE_WEBHOOK_SECRET`, then restart the backend:
-
-```bash
-docker compose restart backend
-```
-
-Trigger a test event with `stripe trigger payment_intent.succeeded`.
+Copy the `whsec_...` secret it prints into `backend/.env` as `STRIPE_WEBHOOK_SECRET`, then `docker compose up -d backend`.
 
 ## Everyday commands
 
@@ -158,7 +171,7 @@ docker compose down -v                         # stop and wipe the database
 After adding or changing a model in `backend/app/models/` (and importing it in `models/__init__.py`):
 
 ```bash
-docker compose exec backend alembic revision --autogenerate -m "add orders table"
+docker compose exec backend alembic revision --autogenerate -m "add refunds"
 docker compose exec backend alembic upgrade head
 ```
 
@@ -171,6 +184,10 @@ docker compose up -d --build backend
 # Frontend
 docker compose exec frontend npm install <package>
 ```
+
+## Browser checks
+
+Two Zyrenn suites run against the public demo (project **OMS** → Checks): **Ying Thai 2: each part** (18 checks, one per screen and rule) and **Ying Thai 2: end to end** (one table from seating to clearing, with captions so it can be filmed as a demo). They sign in with `BROWSER_CHECK_KEY`, stored in the suites as a hidden value, and start with "Reset to sample data".
 
 ## Requirements
 

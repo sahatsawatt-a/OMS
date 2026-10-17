@@ -63,7 +63,7 @@
   position: sticky;
   top: 49px;
   z-index: 9;
-  background: rgb(247 246 242 / 94%);
+  background: color-mix(in srgb, var(--bg) 94%, transparent);
   backdrop-filter: blur(8px);
   border-bottom: 1px solid var(--border);
 }
@@ -117,6 +117,9 @@
   overflow-x: auto;
   padding: 0 20px;
   scrollbar-width: none;
+  scroll-padding: 0 40px;
+  /* Fade the ends so it is clear the row scrolls sideways */
+  mask-image: linear-gradient(to right, transparent 0, #000 16px, #000 calc(100% - 40px), transparent 100%);
 }
 .c-categories::-webkit-scrollbar {
   display: none;
@@ -253,7 +256,7 @@
 .menu-item:hover:not(:disabled) .menu-add {
   background: var(--text);
   border-color: var(--text);
-  color: #fff;
+  color: var(--bg);
 }
 .tag {
   font-size: 0.66rem;
@@ -271,7 +274,7 @@
   width: 100%;
   max-width: 560px;
   padding: 12px 16px calc(12px + env(safe-area-inset-bottom));
-  background: linear-gradient(to top, var(--bg) 65%, rgb(247 246 242 / 0%));
+  background: linear-gradient(to top, var(--bg) 65%, color-mix(in srgb, var(--bg) 0%, transparent));
   z-index: 20;
 }
 .c-cartbar .btn {
@@ -294,28 +297,21 @@
 .item-desc {
   margin: 12px 0 0;
 }
-.photo-credit {
-  display: block;
-  font-size: 0.72rem;
-  color: var(--faint);
-  text-decoration: none;
-  margin-top: -4px;
+.item-names {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin-top: 4px;
 }
-.photo-credit:hover {
-  text-decoration: underline;
+.item-number {
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--accent);
 }
-.credits-link {
-  display: block;
-  margin: 28px auto 8px;
-  border: 0;
-  background: none;
-  font-size: 0.8rem;
-  color: var(--muted);
-  text-decoration: underline;
-  cursor: pointer;
-}
-.credits-list a {
-  color: inherit;
+.item-names .menu-name-th {
+  font-size: 1.05rem;
 }
 .item-price {
   margin-top: 8px;
@@ -665,4 +661,71 @@
     text-decoration: underline;
     margin-left: 4px;
   }
+}
+
+/* Pay first: checkout and order payment states */
+.checkout-lines {
+  margin-top: 0;
+}
+.checkout-total {
+  border-top: 1px solid var(--border);
+  margin-top: 4px;
+  padding-top: 10px;
+}
+.pay-counter-note {
+  margin: 4px 0 0;
+}
+.pay-phone {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.pay-submit {
+  margin-top: 16px;
+}
+.order-pay {
+  font-size: 0.8rem;
+  margin-top: 2px;
+  color: var(--success);
+}
+.order-pay-awaiting_counter {
+  color: var(--warning);
+}
+.order-pay-cancelled {
+  color: var(--danger);
+}
+.card.is-cancelled {
+  opacity: 0.65;
+}
+.pay-at-counter {
+  border: 1px solid var(--warning);
+  background: var(--warning-soft);
+  text-align: center;
+}
+.pay-at-counter-label {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--warning);
+  font-weight: 600;
+}
+.pay-at-counter-number {
+  font-family: var(--font-display);
+  font-size: 2rem;
+  font-weight: 500;
+  margin-top: 4px;
+}
+.pay-at-counter-amount {
+  font-size: 1.1rem;
+  font-weight: 600;
+}
+.pay-at-counter p {
+  margin: 6px 0 0;
+}
+.visit-waiting {
+  color: var(--warning);
+  margin: 10px 0 0;
+}
+.visit-note {
+  margin: 10px 0 0;
 }

@@ -4,18 +4,27 @@ import { Link } from 'react-router-dom'
 import { formatElapsed, formatTime, sessionUrl, useNow } from '../../components/format'
 import { Icon } from '../../components/Icon'
 import { Sheet, StatusBadge } from '../../components/shared'
-import { RESTAURANT_NAME, TABLES } from '../../demo/mockData'
-import { calculateBill, formatAUD } from '../../demo/money'
+import { useMediaQuery } from '../../components/useMediaQuery'
+import { SignOutButton } from '../../components/StaffGate'
+import { RESTAURANT_NAME } from '../../demo/mockData'
+import { formatAUD, gstIncluded } from '../../demo/money'
 import { actions, useDemoState } from '../../demo/store'
-import type { Order, PaymentMethod, Table, TableSession } from '../../demo/types'
+import type { Order, Table, TableSession } from '../../demo/types'
 import './staff.css'
 
 type TableView = {
   table: Table
   session?: TableSession
   orders: Order[]
-  state: 'free' | 'seated' | 'ready' | 'bill'
+  state: 'free' | 'seated' | 'pay' | 'serve'
 }
+
+/** Paid orders with food not yet brought to the table */
+const toServe = (orders: Order[]) =>
+  orders.filter((o) => o.payment.status === 'paid' && o.items.some((i) => i.status !== 'served' && i.status !== 'cancelled'))
+const paidTotal = (orders: Order[]) => orders.filter((o) => o.payment.status === 'paid').reduce((n, o) => n + o.payment.amount, 0)
+
+const STATE_LABEL: Record<TableView['state'], string> = { free: 'Free', seated: 'Seated', pay: 'Pay at counter', serve: 'Food to serve' }
 
 export default function StaffPage() {
   const demo = useDemoState()
@@ -26,25 +35,64 @@ export default function StaffPage() {
 
   const views: TableView[] = useMemo(
     () =>
-      TABLES.map((table) => {
+      demo.tables.map((table) => {
         const session = Object.values(demo.sessions).find((s) => s.tableId === table.id && s.status === 'open')
         const orders = session ? demo.orders.filter((o) => o.sessionToken === session.token) : []
-        const hasReady = orders.some((o) => o.items.some((i) => i.status === 'ready'))
-        const state = !session ? 'free' : session.billRequestedAt ? 'bill' : hasReady ? 'ready' : 'seated'
+        const waiting = orders.some((o) => o.payment.status === 'awaiting_counter')
+        const state: TableView['state'] = !session ? 'free' : waiting ? 'pay' : toServe(orders).length ? 'serve' : 'seated'
         return { table, session, orders, state }
       }),
     [demo],
   )
 
-  const alerts = views.flatMap((v) => {
-    if (!v.session) return []
-    const list: { token: string; table: number; kind: 'waiter' | 'bill'; at: number }[] = []
-    if (v.session.waiterCalledAt) list.push({ token: v.session.token, table: v.table.number, kind: 'waiter', at: v.session.waiterCalledAt })
-    if (v.session.billRequestedAt) list.push({ token: v.session.token, table: v.table.number, kind: 'bill', at: v.session.billRequestedAt })
-    return list
-  })
+  const waiterCalls = views.flatMap((v) =>
+    v.session?.waiterCalledAt ? [{ token: v.session.token, table: v.table.number, at: v.session.waiterCalledAt }] : [],
+  )
+  // Orders where the guest chose "Pay at counter" and is waiting to pay
+  const counterPayments = demo.orders
+    .filter((o) => o.payment.status === 'awaiting_counter' && demo.sessions[o.sessionToken]?.status === 'open')
+    .sort((a, b) => a.createdAt - b.createdAt)
 
   const selectedView = views.find((v) => v.session?.token === selected)
+  // Wide screens: alerts live in the side panel; phones: a compact list above the tables
+  const narrow = useMediaQuery('(max-width: 820px)')
+  const attention = counterPayments.length + waiterCalls.length
+  const seated = views.filter((v) => v.session)
+  const guests = seated.reduce((n, v) => n + (v.session?.guests ?? 0), 0)
+
+  // Counter payments to take and waiter calls, oldest first
+  const attentionList = (
+    <div className="alerts">
+          {counterPayments.map((o) => (
+        <div key={o.id} className="alert alert-pay">
+          <Icon name="cash" />
+          <span className="grow">
+            <strong>Order #{o.number}</strong> · Table {o.tableNumber} · {formatAUD(o.payment.amount)} to pay at the counter ·{' '}
+            {formatElapsed(o.createdAt, now)}
+          </span>
+          <div className="row gap">
+            <button className="btn btn-sm" onClick={() => actions.confirmCounterPayment(o.id, 'card_terminal')}>
+              Card
+            </button>
+            <button className="btn btn-sm" onClick={() => actions.confirmCounterPayment(o.id, 'cash')}>
+              Cash
+            </button>
+          </div>
+        </div>
+      ))}
+      {waiterCalls.map((a) => (
+        <div key={a.token} className="alert alert-waiter">
+          <Icon name="bell" />
+          <span className="grow">
+            <strong>Table {a.table}</strong> is calling a waiter · {formatElapsed(a.at, now)}
+          </span>
+          <button className="btn btn-sm" onClick={() => actions.acknowledgeWaiter(a.token)}>
+            Got it
+          </button>
+        </div>
+      ))}
+    </div>
+  )
 
   return (
     <div className="staff">
@@ -57,30 +105,16 @@ export default function StaffPage() {
           <Link to="/admin">
             Menu admin <Icon name="arrowRight" size={16} />
           </Link>
+          <SignOutButton />
         </nav>
       </header>
 
-      {alerts.length > 0 && (
-        <div className="alerts">
-          {alerts.map((a) => (
-            <div key={`${a.token}-${a.kind}`} className={`alert alert-${a.kind}`}>
-              <Icon name={a.kind === 'waiter' ? 'bell' : 'receipt'} />
-              <span className="grow">
-                <strong>Table {a.table}</strong> {a.kind === 'waiter' ? 'is calling a waiter' : 'asked for the bill'} ·{' '}
-                {formatElapsed(a.at, now)}
-              </span>
-              <button className="btn btn-sm" onClick={() => actions.acknowledge(a.token, a.kind)}>
-                Got it
-              </button>
-            </div>
-          ))}
-        </div>
-      )}
-
       <div className="staff-body">
-        <main className="table-grid">
+        <div className="staff-main">
+          {narrow && attention > 0 && attentionList}
+          <main className="table-grid">
           {views.map((v) => {
-            const bill = calculateBill(v.orders)
+            const paid = paidTotal(v.orders)
             return (
               <button
                 key={v.table.id}
@@ -90,7 +124,7 @@ export default function StaffPage() {
                 <div className="table-top">
                   <span className="table-number">{v.table.number}</span>
                   <span className="table-state">
-                    {v.state === 'free' ? 'Free' : v.state === 'bill' ? 'Bill requested' : v.state === 'ready' ? 'Ready to serve' : 'Seated'}
+                    {STATE_LABEL[v.state]}
                   </span>
                 </div>
                 <div className="table-meta">
@@ -101,7 +135,7 @@ export default function StaffPage() {
                     <span>
                       {v.session.guests} guests · {formatElapsed(v.session.openedAt, now).replace(' ago', '')}
                     </span>
-                    {bill.total > 0 ? <strong>{formatAUD(bill.total)}</strong> : <span>No orders yet</span>}
+                    {v.orders.length ? <strong>{formatAUD(paid)} paid</strong> : <span>No orders yet</span>}
                   </div>
                 ) : (
                   <div className="table-bottom muted">Tap to seat guests</div>
@@ -109,14 +143,36 @@ export default function StaffPage() {
               </button>
             )
           })}
-        </main>
+          </main>
+        </div>
 
-        {selectedView?.session && (
+        {selectedView?.session ? (
           <TableDetail
             view={selectedView}
+            attention={narrow ? 0 : attention}
             onShowQr={() => setQrFor(selectedView.session!)}
             onClose={() => setSelected(null)}
           />
+        ) : (
+          !narrow && (
+            <aside className="detail detail-idle" aria-label="Needs attention">
+              <header className="detail-header">
+                <div>
+                  <h2>Needs attention</h2>
+                  <div className="muted small">
+                    {seated.length} of {views.length} tables seated · {guests} {guests === 1 ? 'guest' : 'guests'}
+                  </div>
+                </div>
+              </header>
+              {attention > 0 ? (
+                attentionList
+              ) : (
+                <p className="muted small attention-empty">
+                  Nothing waiting. Counter payments and waiter calls appear here; tap a table to see its orders.
+                </p>
+              )}
+            </aside>
+          )
         )}
       </div>
 
@@ -124,9 +180,10 @@ export default function StaffPage() {
         <OpenSessionSheet
           table={opening}
           onClose={() => setOpening(null)}
-          onOpen={(guests) => {
-            const session = actions.openSession(opening.id, guests)
+          onOpen={async (guests) => {
+            const session = await actions.openSession(opening.id, guests)
             setOpening(null)
+            if (!session) return
             setSelected(session.token)
             setQrFor(session)
           }}
@@ -138,15 +195,23 @@ export default function StaffPage() {
   )
 }
 
-function OpenSessionSheet({ table, onClose, onOpen }: { table: Table; onClose: () => void; onOpen: (guests: number) => void }) {
+function OpenSessionSheet({ table, onClose, onOpen }: { table: Table; onClose: () => void; onOpen: (guests: number) => Promise<void> }) {
   const [guests, setGuests] = useState(Math.min(2, table.seats))
+  const [opening, setOpening] = useState(false)
   return (
     <Sheet
       title={`Seat guests at Table ${table.number}`}
       onClose={onClose}
       footer={
-        <button className="btn btn-primary btn-block" onClick={() => onOpen(guests)}>
-          Open session & generate QR
+        <button
+          className="btn btn-primary btn-block"
+          disabled={opening}
+          onClick={() => {
+            setOpening(true)
+            void onOpen(guests)
+          }}
+        >
+          {opening ? 'Opening…' : 'Open session & generate QR'}
         </button>
       }
     >
@@ -196,21 +261,39 @@ function QrSheet({ session, onClose }: { session: TableSession; onClose: () => v
         </div>
         <p className="muted small">
           The table number is for reference; orders are routed by the session token. A phone can only reach this
-          link if <code>VITE_PUBLIC_BASE_URL</code> points at an address it can open (e.g. your LAN IP).
+          link if <code>VITE_PUBLIC_BASE_URL</code> points at an address it can open (the public demo link, or your LAN IP).
         </p>
       </div>
     </Sheet>
   )
 }
 
-function TableDetail({ view, onShowQr, onClose }: { view: TableView; onShowQr: () => void; onClose: () => void }) {
+function TableDetail({
+  view,
+  attention,
+  onShowQr,
+  onClose,
+}: {
+  view: TableView
+  /** Counter payments and waiter calls waiting elsewhere; closing the table shows them */
+  attention: number
+  onShowQr: () => void
+  onClose: () => void
+}) {
   const session = view.session!
   const now = useNow()
-  const bill = calculateBill(view.orders)
-  const [settling, setSettling] = useState(false)
+  const paid = paidTotal(view.orders)
+  const unpaid = view.orders.some((o) => o.payment.status === 'awaiting_counter')
 
   return (
     <aside className="detail">
+      {attention > 0 && (
+        <button className="attention-link" onClick={onClose}>
+          <Icon name="bell" size={15} />
+          {attention} {attention === 1 ? 'thing needs' : 'things need'} attention
+          <Icon name="arrowRight" size={15} />
+        </button>
+      )}
       <header className="detail-header">
         <div>
           <h2>Table {session.tableNumber}</h2>
@@ -234,100 +317,95 @@ function TableDetail({ view, onShowQr, onClose }: { view: TableView; onShowQr: (
 
       <div className="detail-orders">
         {view.orders.length === 0 && <p className="muted">No orders yet.</p>}
-        {view.orders.map((o) => (
-          <section key={o.id} className="card">
-            <div className="row between">
-              <strong>Round {o.round}</strong>
-              <span className="muted small">{formatTime(o.createdAt)}</span>
-            </div>
-            <ul className="line-list">
-              {o.items.map((i) => (
-                <li key={i.id} className={`line ${i.status === 'cancelled' ? 'struck' : ''}`}>
-                  <div className="grow">
-                    <div className="line-name">
-                      {i.quantity} × {i.name}
-                    </div>
-                    {(i.options.length > 0 || i.note) && (
-                      <div className="muted small">
-                        {[...i.options.map((x) => x.choiceName), i.note && `“${i.note}”`].filter(Boolean).join(' · ')}
+        {[...view.orders].reverse().map((o) => {
+          const unserved = o.items.filter((i) => i.status !== 'served' && i.status !== 'cancelled')
+          return (
+            <section key={o.id} className={`card order-card pay-${o.payment.status}`}>
+              <div className="row between">
+                <strong>Order #{o.number}</strong>
+                <span className="muted small">{formatTime(o.createdAt)}</span>
+              </div>
+              <div className={`order-pay-line pay-${o.payment.status}`}>
+                {o.payment.status === 'paid'
+                  ? `Paid ${o.payment.method === 'stripe' ? 'on phone' : o.payment.method === 'cash' ? 'in cash' : 'by card'} · ${formatAUD(o.payment.amount)}`
+                  : o.payment.status === 'awaiting_counter'
+                    ? `Waiting for payment at counter · ${formatAUD(o.payment.amount)}`
+                    : 'Cancelled, not paid'}
+              </div>
+              <ul className="line-list">
+                {o.items.map((i) => (
+                  <li key={i.id} className={`line ${i.status === 'cancelled' ? 'struck' : ''}`}>
+                    <div className="grow">
+                      <div className="line-name">
+                        {i.quantity} × {i.name}
                       </div>
+                      {(i.options.length > 0 || i.note) && (
+                        <div className="muted small">
+                          {[...i.options.map((x) => x.choiceName), i.note && `“${i.note}”`].filter(Boolean).join(' · ')}
+                        </div>
+                      )}
+                    </div>
+                    {o.payment.status === 'awaiting_counter' ? (
+                      <span className="muted small">Not paid</span>
+                    ) : (
+                      <>
+                        <StatusBadge status={i.status} />
+                        {o.payment.status === 'paid' && i.status !== 'served' && i.status !== 'cancelled' && (
+                          <button className="btn btn-sm btn-outline" onClick={() => actions.setItemStatus(o.id, i.id, 'served')}>
+                            Served
+                          </button>
+                        )}
+                      </>
                     )}
-                  </div>
-                  <StatusBadge status={i.status} />
-                  {i.status === 'ready' && (
-                    <button className="btn btn-sm btn-primary" onClick={() => actions.setItemStatus(o.id, i.id, 'served')}>
-                      Served
-                    </button>
-                  )}
-                  {i.status === 'submitted' && (
-                    <button className="btn btn-sm btn-ghost" onClick={() => actions.setItemStatus(o.id, i.id, 'cancelled')}>
-                      Cancel
-                    </button>
-                  )}
-                </li>
-              ))}
-            </ul>
-          </section>
-        ))}
+                  </li>
+                ))}
+              </ul>
+              {o.payment.status === 'awaiting_counter' && (
+                <div className="row gap wrap order-actions">
+                  <button className="btn btn-sm btn-primary" onClick={() => actions.confirmCounterPayment(o.id, 'card_terminal')}>
+                    <Icon name="card" size={15} /> Paid by card
+                  </button>
+                  <button className="btn btn-sm btn-primary" onClick={() => actions.confirmCounterPayment(o.id, 'cash')}>
+                    <Icon name="cash" size={15} /> Paid in cash
+                  </button>
+                  <button
+                    className="btn btn-sm btn-ghost"
+                    onClick={() => {
+                      if (confirm(`Cancel order #${o.number}? It was never paid, so nothing will be made.`)) actions.cancelUnpaidOrder(o.id)
+                    }}
+                  >
+                    Cancel order
+                  </button>
+                </div>
+              )}
+              {o.payment.status === 'paid' && unserved.length > 1 && (
+                <button className="btn btn-sm btn-outline btn-block order-actions" onClick={() => actions.markOrderServed(o.id)}>
+                  Mark all served
+                </button>
+              )}
+            </section>
+          )
+        })}
       </div>
 
       <footer className="detail-footer">
-        <div className="row between">
-          <span className="muted">
-            Includes GST {formatAUD(bill.gst)}
-          </span>
-        </div>
         <div className="row between total">
-          <span>Total</span>
-          <span>{formatAUD(bill.total)}</span>
+          <span>Paid this visit</span>
+          <span>{formatAUD(paid)}</span>
         </div>
-        <button className="btn btn-primary btn-block" onClick={() => setSettling(true)}>
-          Settle bill & close table
-        </button>
-      </footer>
-
-      {settling && (
-        <SettleSheet
-          tableNumber={session.tableNumber}
-          amount={bill.total}
-          onClose={() => setSettling(false)}
-          onSettle={(method) => {
-            actions.settle(session.token, method, bill.total)
-            setSettling(false)
-            onClose()
+        <div className="muted">Includes GST {formatAUD(gstIncluded(paid))}</div>
+        <button
+          className="btn btn-outline btn-block"
+          disabled={unpaid}
+          title={unpaid ? 'An order is still waiting for payment' : undefined}
+          onClick={async () => {
+            if (confirm(`Clear table ${session.tableNumber}? Its QR code will stop working.`) && (await actions.clearTable(session.token))) onClose()
           }}
-        />
-      )}
+        >
+          Clear table (guests have left)
+        </button>
+        {unpaid && <p className="muted small clear-note">Take or cancel the counter payment before clearing the table.</p>}
+      </footer>
     </aside>
-  )
-}
-
-function SettleSheet({
-  tableNumber,
-  amount,
-  onClose,
-  onSettle,
-}: {
-  tableNumber: number
-  amount: number
-  onClose: () => void
-  onSettle: (m: PaymentMethod) => void
-}) {
-  return (
-    <Sheet title={`Settle Table ${tableNumber}`} onClose={onClose}>
-      <div className="settle-amount">{formatAUD(amount)}</div>
-      <p className="muted small">How did the guests pay? Closing the session frees the table and its QR stops working.</p>
-      <div className="settle-methods">
-        <button className="btn btn-outline" onClick={() => onSettle('cash')}>
-          <Icon name="cash" /> Cash
-        </button>
-        <button className="btn btn-outline" onClick={() => onSettle('card_terminal')}>
-          <Icon name="card" /> Card terminal
-        </button>
-        <button className="btn btn-outline" onClick={() => onSettle('stripe')}>
-          <Icon name="phone" /> Paid by phone (Stripe)
-        </button>
-      </div>
-    </Sheet>
   )
 }

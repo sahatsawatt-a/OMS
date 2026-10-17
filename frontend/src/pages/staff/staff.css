@@ -8,7 +8,9 @@
   display: flex;
   flex-direction: column;
   gap: 8px;
-  padding: 16px 24px 0;
+}
+.staff-main > .alerts {
+  padding: 16px 16px 0;
 }
 .alert {
   display: flex;
@@ -24,17 +26,54 @@
 .alert svg {
   color: var(--info);
 }
-.alert-bill {
+.alert-pay {
   border-left-color: var(--warning);
 }
-.alert-bill svg {
+.alert-pay svg {
   color: var(--warning);
 }
 
 .staff-body {
   flex: 1;
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) clamp(320px, 32vw, 420px);
+  align-items: start;
   min-height: 0;
+}
+.staff-main {
+  min-width: 0;
+}
+/* In the side panel, alerts stack their buttons under the text */
+.detail .alert {
+  flex-wrap: wrap;
+  align-items: flex-start;
+}
+.detail .alert .grow {
+  flex: 1 1 220px;
+}
+.detail .alerts {
+  overflow-y: auto;
+  min-height: 0;
+}
+.attention-empty {
+  margin: 0;
+}
+.attention-link {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid var(--warning);
+  border-radius: var(--radius-sm);
+  background: var(--warning-soft);
+  color: var(--warning);
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.attention-link svg:last-child {
+  margin-left: auto;
 }
 
 .table-grid {
@@ -124,28 +163,28 @@
 .state-seated .table-state {
   color: var(--info);
 }
-.state-ready .table-state {
-  color: var(--success);
-}
-.state-ready {
-  border-top: 3px solid var(--success);
-}
-.state-bill .table-state {
+.state-pay .table-state {
   color: var(--warning);
 }
-.state-bill {
+.state-pay {
   border-top: 3px solid var(--warning);
+}
+.state-serve .table-state {
+  color: var(--success);
+}
+.state-serve {
+  border-top: 3px solid var(--success);
 }
 
 .detail {
-  width: 420px;
-  max-width: 100%;
+  width: 100%;
   background: var(--surface);
   border-left: 1px solid var(--border);
   display: flex;
   flex-direction: column;
   gap: 14px;
   padding: 20px;
+  /* The panel runs from the top bar to the bottom of the screen, beside the tables */
   height: calc(100vh - 56px);
   position: sticky;
   top: 0;
@@ -183,6 +222,9 @@
 
 /* Phones and small tablets: table detail opens as a full-screen panel */
 @media (max-width: 820px) {
+  .staff-body {
+    grid-template-columns: minmax(0, 1fr);
+  }
   .detail {
     position: fixed;
     inset: 0;
@@ -233,7 +275,7 @@
 .guest-picker button.active {
   background: var(--text);
   border-color: var(--text);
-  color: #fff;
+  color: var(--bg);
 }
 
 .qr-print {
@@ -246,7 +288,9 @@
   border-radius: var(--radius);
   width: fit-content;
   margin: 4px auto 0;
+  /* Always dark on white so the printed code scans */
   background: #fff;
+  color: #1c1b19;
 }
 .qr-brand {
   font-size: 0.7rem;
@@ -294,4 +338,30 @@
   justify-content: flex-start;
   min-height: 52px;
   padding: 0 16px;
+}
+
+/* Pay first: order payment state in the table detail */
+.order-pay-line {
+  font-size: 0.8rem;
+  margin-top: 2px;
+  color: var(--success);
+}
+.order-pay-line.pay-awaiting_counter {
+  color: var(--warning);
+  font-weight: 600;
+}
+.order-pay-line.pay-cancelled {
+  color: var(--danger);
+}
+.order-card.pay-awaiting_counter {
+  border-color: var(--warning);
+}
+.order-card.pay-cancelled {
+  opacity: 0.6;
+}
+.order-actions {
+  margin-top: 10px;
+}
+.clear-note {
+  margin: 6px 0 0;
 }

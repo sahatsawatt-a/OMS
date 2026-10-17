@@ -1,12 +1,16 @@
-// Stripe helpers for paying a table bill. The backend holds the secret key; the browser only
-// gets the publishable key and a PaymentIntent client secret.
-import { loadStripe, type Appearance, type Stripe } from '@stripe/stripe-js'
+// Stripe helpers for paying an order. The backend holds the secret key and prices the order;
+// the browser only gets the publishable key and a PaymentIntent client secret.
+// The "pure" entry only fetches Stripe.js when loadStripe() is first called (at checkout);
+// the default entry injects it on every page and slows the first load by seconds
+import { loadStripe } from '@stripe/stripe-js/pure'
+import type { Appearance, Stripe } from '@stripe/stripe-js'
 import { useEffect, useRef } from 'react'
 import { api } from '../../lib/api'
+import { guestActions } from '../../demo/store'
+import type { Order } from '../../demo/types'
 
-export type PaymentConfig = { enabled: boolean; publishable_key: string }
-export type CreatedIntent = { id: string; client_secret: string }
-type IntentStatus = { id: string; status: string; amount: number; currency: string; session_token: string | null }
+/** enabled: real Stripe (sandbox). simulated: demo without Stripe keys, no card is charged. */
+export type PaymentConfig = { enabled: boolean; publishable_key: string; simulated: boolean }
 
 export const stripeAppearance: Appearance = {
   theme: 'stripe',
@@ -27,42 +31,21 @@ export function getStripe(publishableKey: string) {
 
 export const fetchPaymentConfig = () => api<PaymentConfig>('/payments/config')
 
-// Reuse the PaymentIntent for the same session and amount (reopening the sheet, StrictMode re-runs)
-const intents = new Map<string, Promise<CreatedIntent>>()
-export function createIntent(sessionToken: string, tableNumber: number, amount: number): Promise<CreatedIntent> {
-  const key = `${sessionToken}:${amount}`
-  let p = intents.get(key)
-  if (!p) {
-    p = api<CreatedIntent>('/payments/intents', {
-      method: 'POST',
-      body: JSON.stringify({ amount, table_number: tableNumber, session_token: sessionToken }),
-    })
-    p.catch(() => intents.delete(key))
-    intents.set(key, p)
-  }
-  return p
-}
-
-/** Ask the backend (not the browser) whether a payment really succeeded for this session */
-export async function verifyIntent(intentId: string, sessionToken: string): Promise<IntentStatus | null> {
-  const intent = await api<IntentStatus>(`/payments/intents/${encodeURIComponent(intentId)}`)
-  return intent.session_token === sessionToken ? intent : null
-}
-
 /**
  * Some payment methods redirect away and come back with ?payment_intent=…&redirect_status=…
- * Verify those on return, settle the bill if paid, and tidy the URL.
+ * Ask the server to confirm those on return, then tidy the URL.
  */
-export function useStripeRedirectReturn(sessionToken: string, onPaid: (amount: number) => void) {
+export function useStripeRedirectReturn(sessionToken: string, onPaid: (order: Order) => void) {
   const handled = useRef(false)
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
     const intentId = params.get('payment_intent')
     if (!intentId || handled.current) return
     handled.current = true
-    verifyIntent(intentId, sessionToken)
-      .then((intent) => {
-        if (intent?.status === 'succeeded') onPaid(intent.amount)
+    guestActions
+      .confirmIntent(sessionToken, intentId)
+      .then((res) => {
+        if (res.status === 'succeeded') onPaid(res.order)
       })
       .catch(() => undefined)
       .finally(() => {

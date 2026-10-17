@@ -1,0 +1,123 @@
+/*
+ * Colours and type for the three designs (src/components/design.ts). On the guest menu each
+ * design is also a template of its own (pages/customer/templates.tsx and templates.css);
+ * staff and admin screens keep their layout and take the design's colours.
+ * classic  = the original neutral design (index.css tokens), list template
+ * heritage = Ying Thai 2's printed menu: cream paper, navy serif, gold; menu-book template
+ * night    = their logo and website: near-black, gold, magenta accent; photo-feed template
+ */
+
+/* ---------- Shared pieces every design can show ---------- */
+.c-logo {
+  display: none;
+}
+.menu-number {
+  display: none;
+}
+.menu-name-th,
+.c-section-th {
+  font-family: var(--font-thai);
+  font-weight: 500;
+}
+.menu-name-th {
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+.c-section-th {
+  display: block;
+  font-size: 0.85rem;
+  color: var(--muted);
+  letter-spacing: 0;
+}
+.diet-gluten-free {
+  color: var(--success);
+  border-color: color-mix(in srgb, var(--success) 35%, transparent);
+}
+.diet-spicy {
+  color: var(--danger);
+  border-color: color-mix(in srgb, var(--danger) 30%, transparent);
+}
+
+/* ---------- Heritage: the printed menu's colours ---------- */
+:root[data-design='heritage'] {
+  --bg: #ede6d9;
+  --surface: #f6f1e7;
+  --surface-2: #e5dccb;
+  --text: #23215b;
+  --muted: #625e86;
+  --faint: #a29db6;
+  --border: #d8cdb8;
+  --border-strong: #c3b393;
+  --primary: #23215b;
+  --primary-hover: #15134a;
+  --on-primary: #f6f1e7;
+  --accent: #8a6a32;
+  --accent-soft: #eee2c6;
+  --success: #23885a;
+  --success-soft: #dcebdc;
+  --gold: #a07c3e;
+  --gold-band: linear-gradient(90deg, rgb(176 140 82 / 42%) 0%, rgb(196 166 112 / 22%) 55%, rgb(196 166 112 / 0%) 100%);
+  --radius: 6px;
+  --radius-sm: 4px;
+  --font-display: 'Cormorant Garamond', 'Fraunces', Georgia, serif;
+  --font-body: 'Sarabun', 'Noto Sans Thai', system-ui, sans-serif;
+  --font-thai: 'Sarabun', 'Noto Sans Thai', sans-serif;
+  /* The printed menu's border pattern, in gold */
+  --thai-pattern: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='64' height='22' viewBox='0 0 64 22'%3E%3Cg fill='none' stroke='%23b8a17a' stroke-width='1.3' stroke-linecap='round'%3E%3Cpath d='M2 11c6-9 14-9 18-3s-2 10-6 6 2-8 6-4M62 11c-6-9-14-9-18-3s2 10 6 6-2-8-6-4M2 11c6 9 14 9 18 3M62 11c-6 9-14 9-18 3'/%3E%3Ccircle cx='32' cy='11' r='3'/%3E%3Cpath d='M26 11h-3M38 11h3'/%3E%3C/g%3E%3C/svg%3E");
+  /* The curl beside each heading on the printed menu */
+  --flourish: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='90' height='18' viewBox='0 0 90 18'%3E%3Cpath d='M2 9c8 8 18 8 22 2s-6-9-9-4 6 7 12 3 20-8 34-6c8 1 14-3 24-1-8 4-14 5-24 4' fill='none' stroke='%239a7638' stroke-width='1.4' stroke-linecap='round'/%3E%3C/svg%3E");
+}
+[data-design='heritage'] h1,
+[data-design='heritage'] .sheet-header h2,
+[data-design='heritage'] .table-number {
+  font-family: var(--font-display);
+  font-weight: 600;
+}
+[data-design='heritage'] .demo-banner {
+  background: var(--primary);
+}
+[data-design='heritage'] .sheet,
+[data-design='heritage'] .card {
+  background: var(--surface);
+}
+
+/* ---------- Night: the logo's gold on near-black ---------- */
+:root[data-design='night'] {
+  --bg: #0f0e0d;
+  --surface: #191715;
+  --surface-2: #24211d;
+  --text: #f3eee6;
+  --muted: #aba293;
+  --faint: #6f685e;
+  --border: #2d2924;
+  --border-strong: #433d35;
+  --primary: #c9a24b;
+  --primary-hover: #dbb65f;
+  --on-primary: #16130f;
+  --accent: #ec2fa0;
+  --accent-soft: rgb(236 47 160 / 14%);
+  --success: #74c695;
+  --success-soft: rgb(116 198 149 / 14%);
+  --warning: #e6b862;
+  --warning-soft: rgb(230 184 98 / 14%);
+  --info: #93b6ea;
+  --info-soft: rgb(147 182 234 / 14%);
+  --danger: #f2827f;
+  --danger-soft: rgb(242 130 127 / 14%);
+  --gold: #c9a24b;
+  --radius: 14px;
+  --radius-sm: 9px;
+  --shadow: 0 1px 2px rgb(0 0 0 / 40%), 0 10px 30px rgb(0 0 0 / 35%);
+  --font-script: 'Great Vibes', 'Cormorant Garamond', cursive;
+  color-scheme: dark;
+}
+[data-design='night'] .demo-banner {
+  background: #000;
+  color: var(--muted);
+}
+[data-design='night'] .sheet-backdrop {
+  background: rgb(0 0 0 / 60%);
+}
+[data-design='night'] .table-number {
+  color: var(--gold);
+}

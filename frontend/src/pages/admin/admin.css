@@ -13,6 +13,46 @@
   margin: 0 auto;
 }
 
+/* Menu / Reports tabs */
+.admin-tabs {
+  display: flex;
+  gap: 24px;
+  padding: 0 24px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+}
+.admin-tabs button {
+  padding: 12px 0 10px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  background: none;
+  font-weight: 500;
+  color: var(--muted);
+  cursor: pointer;
+}
+.admin-tabs button.active {
+  color: var(--text);
+  border-bottom-color: var(--text);
+}
+.admin-reports {
+  max-width: 1200px;
+  width: 100%;
+  margin: 0 auto;
+  padding: 24px 32px 40px;
+}
+.admin-reports .admin-head {
+  margin-bottom: 18px;
+}
+@media (max-width: 820px) {
+  .admin-tabs {
+    padding: 0 16px;
+  }
+  .admin-reports {
+    padding: 20px 16px 32px;
+  }
+}
+
 /* Category list */
 .admin-cats {
   display: flex;

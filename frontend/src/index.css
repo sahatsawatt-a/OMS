@@ -23,8 +23,12 @@
   --radius-sm: 7px;
   --shadow: 0 1px 2px rgb(28 27 25 / 5%), 0 8px 24px rgb(28 27 25 / 6%);
   --font-display: 'Fraunces', Georgia, 'Times New Roman', serif;
+  --font-body: 'Inter', system-ui, -apple-system, 'Segoe UI', 'Noto Sans Thai', sans-serif;
+  --font-thai: 'Noto Sans Thai', 'Sarabun', system-ui, sans-serif;
+  /* Text on primary buttons */
+  --on-primary: #ffffff;
 
-  font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', 'Noto Sans Thai', sans-serif;
+  font-family: var(--font-body);
   font-size: 15px;
   line-height: 1.5;
   color: var(--text);
@@ -137,7 +141,7 @@ code {
 .btn-primary {
   background: var(--primary);
   border-color: var(--primary);
-  color: #fff;
+  color: var(--on-primary);
 }
 .btn-primary:hover:not(:disabled) {
   background: var(--primary-hover);
@@ -197,12 +201,6 @@ code {
 .badge-submitted {
   color: var(--info);
 }
-.badge-preparing {
-  color: var(--warning);
-}
-.badge-ready {
-  color: var(--success);
-}
 .badge-served {
   color: var(--faint);
 }
@@ -218,7 +216,7 @@ code {
   justify-content: center;
   border-radius: 999px;
   background: var(--text);
-  color: #fff;
+  color: var(--bg);
   font-size: 0.72rem;
   font-weight: 600;
 }
@@ -378,7 +376,7 @@ code {
   }
 }
 
-/* Top bar for staff & kitchen */
+/* Top bar for staff and admin */
 .topbar {
   display: flex;
   align-items: center;
@@ -425,7 +423,7 @@ code {
   bottom: 100px;
   transform: translateX(-50%);
   background: var(--text);
-  color: #fff;
+  color: var(--bg);
   padding: 10px 16px;
   border-radius: var(--radius-sm);
   font-size: 0.88rem;
@@ -438,11 +436,47 @@ code {
 
 .demo-banner {
   background: var(--text);
-  color: #e9e6df;
-  text-align: center;
-  font-size: 0.78rem;
+  color: var(--bg);
+  font-size: 0.76rem;
   letter-spacing: 0.02em;
-  padding: 7px 16px;
+  padding: 5px 16px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 4px 16px;
+}
+.design-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+.design-switch-label {
+  opacity: 0.7;
+  margin-right: 6px;
+}
+.design-switch button {
+  border: 1px solid transparent;
+  background: none;
+  color: inherit;
+  font-size: 0.74rem;
+  padding: 2px 9px;
+  border-radius: 999px;
+  cursor: pointer;
+  opacity: 0.75;
+}
+.design-switch button:hover {
+  opacity: 1;
+}
+.design-switch button.active {
+  opacity: 1;
+  border-color: currentColor;
+  font-weight: 600;
+}
+@media (max-width: 480px) {
+  .demo-banner-text {
+    display: none;
+  }
 }
 
 @media (max-width: 600px) {
@@ -473,4 +507,56 @@ code {
     margin: auto;
     border: 0;
   }
+}
+
+/* Staff sign-in and live-state banners */
+.gate {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 24px 16px;
+}
+.gate-card {
+  width: 100%;
+  max-width: 380px;
+  padding: 28px 24px;
+}
+.gate-card h1 {
+  font-family: var(--font-display);
+  font-weight: 500;
+  font-size: 1.6rem;
+  margin: 4px 0 6px;
+}
+.gate-brand {
+  font-size: 0.78rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.gate-submit {
+  margin-top: 18px;
+}
+.gate-back {
+  display: block;
+  text-align: center;
+  margin-top: 14px;
+}
+.gate-banner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 16px;
+  font-size: 0.85rem;
+  background: var(--warning-soft);
+  color: var(--warning);
+  border-bottom: 1px solid var(--border);
+}
+.gate-banner-error {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+.gate-error {
+  color: var(--danger);
+  font-size: 0.85rem;
+  margin: 10px 0 0;
 }

@@ -1,11 +1,10 @@
 import { useEffect, type ReactNode } from 'react'
 import type { ItemStatus } from '../demo/types'
+import { DESIGNS, setDesign, useDesign } from './design'
 import { Icon } from './Icon'
 
 const STATUS_LABEL: Record<ItemStatus, string> = {
-  submitted: 'Sent',
-  preparing: 'Cooking',
-  ready: 'Ready',
+  submitted: 'Preparing',
   served: 'Served',
   cancelled: 'Cancelled',
 }
@@ -47,10 +46,27 @@ export function Sheet({
   )
 }
 
+/** Thin demo strip: what this is, and which design to show */
 export function DemoBanner() {
+  const design = useDesign()
   return (
     <div className="demo-banner">
-      Frontend demo with mock data. No real orders or payments.
+      <span className="demo-banner-text">Demo for Ying Thai 2 · Stripe test mode, no real money moves</span>
+      <span className="design-switch" role="radiogroup" aria-label="Design">
+        <span className="design-switch-label">Design</span>
+        {DESIGNS.map((d) => (
+          <button
+            key={d.id}
+            role="radio"
+            aria-checked={design === d.id}
+            className={design === d.id ? 'active' : ''}
+            title={d.note}
+            onClick={() => setDesign(d.id)}
+          >
+            {d.name}
+          </button>
+        ))}
+      </span>
     </div>
   )
 }

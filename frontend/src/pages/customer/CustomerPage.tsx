@@ -1,69 +1,53 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
-import { useNavigate, useSearchParams } from 'react-router-dom'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { formatElapsed, formatTime, useNow } from '../../components/format'
 import { Icon } from '../../components/Icon'
-import { Sheet, StatusBadge } from '../../components/shared'
+import { DemoBanner, Sheet, StatusBadge } from '../../components/shared'
 import { useMediaQuery } from '../../components/useMediaQuery'
-import { RESTAURANT_NAME, TABLES } from '../../demo/mockData'
-import { calculateBill, formatAUD } from '../../demo/money'
+import { RESTAURANT_NAME } from '../../demo/mockData'
+import { formatAUD, gstIncluded } from '../../demo/money'
 import { allergenSentence, DIETARY_LABEL } from '../../demo/dietary'
-import { creditForImage } from '../../demo/photoCredits'
 import PaySheet from './PaySheet'
+import { BookMenu, FeedMenu } from './templates'
+import { useDesign } from '../../components/design'
 import { useStripeRedirectReturn } from './stripe'
-import { actions, randomToken, useDemoState } from '../../demo/store'
-import type { CartLine, MenuData, MenuItem, Order, SelectedOption, TableSession } from '../../demo/types'
+import { guestActions, randomToken, useGuestState, useRefreshOnFocus } from '../../demo/store'
+import type { CartLine, MenuData, MenuItem, Order, SelectedOption, TableSession as Session } from '../../demo/types'
 import './customer.css'
 
 export default function CustomerPage() {
   const [params] = useSearchParams()
-  const navigate = useNavigate()
   const token = params.get('session') ?? ''
-  const tableParam = Number(params.get('table'))
-  const state = useDemoState()
-  const session = state.sessions[token]
-
   if (!token) return <SessionMessage title="Scan the QR code on your table" text="Ask our staff for a QR code to start ordering." />
+  return <TableSession token={token} />
+}
 
-  if (!session) {
-    // The demo keeps sessions in this browser only. A phone scanning a QR made on
-    // another device will not know the session, so offer to start it locally.
-    const table = TABLES.find((t) => t.number === tableParam)
-    return (
-      <SessionMessage
-        title="Session not found on this device"
-        text="In the real system this link would load your table's session from the server. In this demo, sessions live in the browser that created them."
-      >
-        {table && (
-          <button
-            className="btn btn-primary"
-            onClick={() => {
-              // If this browser already has an open session for the table, join that one
-              const s = actions.openSession(table.id, 2, token)
-              if (s.token !== token) navigate(`/order?table=${s.tableNumber}&session=${encodeURIComponent(s.token)}`, { replace: true })
-            }}
-          >
-            Continue as Table {table.number} (demo)
-          </button>
-        )}
-      </SessionMessage>
-    )
+/** Loads the table session from the server; the token in the QR code is the guest's key */
+function TableSession({ token }: { token: string }) {
+  const { state, missing, error } = useGuestState(token)
+  useRefreshOnFocus(token)
+
+  if (missing) {
+    return <SessionMessage title="This QR code is not valid" text="Please ask our staff for your table's QR code." />
   }
-
-  if (session.status === 'closed') {
+  if (!state) {
+    return <SessionMessage title={error ? 'Can’t reach the restaurant' : 'Loading your table…'} text={error ? 'Check your connection; we’ll keep trying.' : ''} />
+  }
+  if (state.session.status === 'closed') {
     return (
       <SessionMessage
         title="Thank you for dining with us!"
-        text={`Table ${session.tableNumber}'s session has ended${session.payment ? ` and was paid (${formatAUD(session.payment.amount)})` : ''}. Please ask our staff if you'd like to order again.`}
+        text={`Table ${state.session.tableNumber}'s visit has ended. Please ask our staff if you'd like to order again.`}
       />
     )
   }
-
-  return <OrderingApp session={session} soldOut={state.soldOut} menu={state.menu} />
+  return <OrderingApp session={state.session} orders={state.orders} soldOut={state.menu.soldOut ?? []} menu={state.menu} />
 }
 
 function SessionMessage({ title, text, children }: { title: string; text: string; children?: React.ReactNode }) {
   return (
     <div className="customer">
+      <DemoBanner />
       <div className="session-message">
         <div className="session-message-icon">
           <Icon name="qr" size={26} />
@@ -78,7 +62,8 @@ function SessionMessage({ title, text, children }: { title: string; text: string
 }
 
 function useCart(token: string) {
-  const key = `oms-cart-${token}`
+  // v2: cart options carry their ids so the server can price them
+  const key = `oms-cart-v2-${token}`
   const [lines, setLines] = useState<CartLine[]>(() => {
     try {
       return JSON.parse(localStorage.getItem(key) ?? '[]') as CartLine[]
@@ -96,9 +81,9 @@ function useCart(token: string) {
   return [lines, setLines] as const
 }
 
-function OrderingApp({ session, soldOut, menu }: { session: TableSession; soldOut: string[]; menu: MenuData }) {
-  const state = useDemoState()
+function OrderingApp({ session, orders, soldOut, menu }: { session: Session; orders: Order[]; soldOut: string[]; menu: MenuData }) {
   const [tab, setTab] = useState<'menu' | 'orders'>('menu')
+  const design = useDesign()
   // Only dishes the admin has not hidden, in categories that have some
   const items = useMemo(() => menu.items.filter((m) => !m.hidden), [menu.items])
   const categories = useMemo(
@@ -109,24 +94,15 @@ function OrderingApp({ session, soldOut, menu }: { session: TableSession; soldOu
   const [picking, setPicking] = useState<MenuItem | null>(null)
   const [cartOpen, setCartOpen] = useState(false)
   const [payOpen, setPayOpen] = useState(false)
-  const [creditsOpen, setCreditsOpen] = useState(false)
   const [query, setQuery] = useState('')
   const searching = query.trim().length > 0
   const results = useMemo(() => searchMenu(query, items, categories), [query, items, categories])
   const [toast, setToast] = useState<string | null>(null)
   const [cart, setCart] = useCart(session.token)
-  // iPad landscape and desktop: cart / bill stay visible in a side column
+  // iPad landscape and desktop: cart / visit summary stay visible in a side column
   const wide = useMediaQuery('(min-width: 1024px)')
 
-  // Returning from a redirect-based Stripe payment method
-  const settleByStripe = useCallback((amount: number) => actions.settle(session.token, 'stripe', amount), [session.token])
-  useStripeRedirectReturn(session.token, settleByStripe)
-
-  const orders = useMemo(
-    () => state.orders.filter((o) => o.sessionToken === session.token),
-    [state.orders, session.token],
-  )
-  const bill = calculateBill(orders)
+  const activeOrders = orders.filter((o) => o.payment.status !== 'cancelled').length
   const cartCount = cart.reduce((n, l) => n + l.quantity, 0)
   const cartTotal = cart.reduce((n, l) => n + l.unitPrice * l.quantity, 0)
 
@@ -144,28 +120,116 @@ function OrderingApp({ session, soldOut, menu }: { session: TableSession; soldOu
     }
   }, [soldOut, cart, setCart])
 
-  const sendOrder = () => {
-    actions.submitOrder(session.token, cart)
-    setCart([])
+  // Pay first: the cart goes to checkout; the order is only placed once paid (or as "pay at counter")
+  const checkout = () => {
     setCartOpen(false)
-    setTab('orders')
-    setToast('Order sent to the kitchen')
+    setPayOpen(true)
   }
 
-  const requestBill = () => {
-    actions.requestBill(session.token)
-    setToast('We will bring your bill shortly')
+  const placed = (order: Order) => {
+    setPayOpen(false)
+    setCart([])
+    setTab('orders')
+    setToast(
+      order.payment.status === 'paid'
+        ? `Paid. Order #${order.number} is on its way to the kitchen`
+        : `Order #${order.number} placed. Please pay at the counter`,
+    )
   }
+
+  // Returning from a redirect-based Stripe payment method
+  useStripeRedirectReturn(session.token, placed)
 
   const scrollTo = (id: string) => {
     setCategory(id)
     document.getElementById(`cat-${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
   }
 
+  // The section bar follows the reader: highlight the section on screen and keep its tab in view
+  const categoryBar = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (design !== 'classic' || tab !== 'menu' || searching) return
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const visible = entries.filter((e) => e.isIntersecting)
+        if (visible.length) setCategory(visible[0].target.id.replace(/^cat-/, ''))
+      },
+      { rootMargin: '-180px 0px -55% 0px' },
+    )
+    categories.forEach((c) => {
+      const el = document.getElementById(`cat-${c.id}`)
+      if (el) observer.observe(el)
+    })
+    return () => observer.disconnect()
+  }, [design, tab, searching, categories])
+  useEffect(() => {
+    categoryBar.current
+      ?.querySelector<HTMLElement>('button.active')
+      ?.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' })
+  }, [category])
+
+  const callWaiter = () => {
+    guestActions
+      .callWaiter(session.token)
+      .then(() => setToast('A waiter is on the way'))
+      .catch((e: Error) => setToast(e.message))
+  }
+
+  // Shared by every template: dish sheet, cart, checkout and messages
+  const overlays = (
+    <>
+      {picking && (
+        <ItemSheet
+          item={picking}
+          onClose={() => setPicking(null)}
+          onAdd={(line) => {
+            setCart((c) => [...c, line])
+            setPicking(null)
+            setToast(`Added ${line.quantity} × ${line.name}`)
+          }}
+        />
+      )}
+      {cartOpen && <CartSheet lines={cart} setLines={setCart} onClose={() => setCartOpen(false)} onCheckout={checkout} />}
+      {payOpen && <PaySheet lines={cart} sessionToken={session.token} onClose={() => setPayOpen(false)} onPlaced={placed} />}
+      {toast && <div className="toast">{toast}</div>}
+    </>
+  )
+
+  // The menu book and the photo feed are whole templates of their own
+  if (design !== 'classic') {
+    const Template = design === 'heritage' ? BookMenu : FeedMenu
+    return (
+      <div className={`customer customer-${design}`}>
+        <DemoBanner />
+        <Template
+          session={session}
+          items={items}
+          categories={categories}
+          soldOut={soldOut}
+          query={query}
+          setQuery={setQuery}
+          results={results}
+          tab={tab}
+          setTab={setTab}
+          activeOrders={activeOrders}
+          cartCount={cartCount}
+          cartTotal={cartTotal}
+          onPick={setPicking}
+          onOpenCart={() => setCartOpen(true)}
+          onCallWaiter={callWaiter}
+          ordersView={<OrdersView orders={orders}>{orders.length > 0 && <VisitSummary orders={orders} />}</OrdersView>}
+        />
+        {overlays}
+      </div>
+    )
+  }
+
   return (
     <div className="customer">
+      <DemoBanner />
       <header className="c-header">
-        <div>
+        <img className="c-logo" src="/brand/ying-thai-2-logo.png" alt="" width={56} height={56} />
+        <div className="c-header-text">
           <div className="c-restaurant">{RESTAURANT_NAME}</div>
           <div className="c-table">
             Table {session.tableNumber} · {session.guests} {session.guests === 1 ? 'guest' : 'guests'}
@@ -174,10 +238,7 @@ function OrderingApp({ session, soldOut, menu }: { session: TableSession; soldOu
         <button
           className="btn btn-outline btn-sm"
           disabled={!!session.waiterCalledAt}
-          onClick={() => {
-            actions.callWaiter(session.token)
-            setToast('A waiter is on the way')
-          }}
+          onClick={callWaiter}
         >
           <Icon name="bell" size={16} />
           {session.waiterCalledAt ? 'Waiter called' : 'Call waiter'}
@@ -189,7 +250,7 @@ function OrderingApp({ session, soldOut, menu }: { session: TableSession; soldOu
           Menu
         </button>
         <button className={tab === 'orders' ? 'active' : ''} onClick={() => setTab('orders')}>
-          My orders {bill.itemCount > 0 && <span className="pill">{bill.itemCount}</span>}
+          My orders {activeOrders > 0 && <span className="pill">{activeOrders}</span>}
         </button>
       </nav>
 
@@ -204,7 +265,7 @@ function OrderingApp({ session, soldOut, menu }: { session: TableSession; soldOu
                     type="search"
                     value={query}
                     onChange={(e) => setQuery(e.target.value)}
-                    placeholder="Search dishes, e.g. curry, vegan, halal"
+                    placeholder="Search by name or number, e.g. curry, 32, gluten free"
                     aria-label="Search the menu"
                     enterKeyHint="search"
                   />
@@ -215,7 +276,7 @@ function OrderingApp({ session, soldOut, menu }: { session: TableSession; soldOu
                   )}
                 </label>
                 {!searching && (
-                  <div className="c-categories">
+                  <div className="c-categories" ref={categoryBar}>
                     {categories.map((c) => (
                       <button key={c.id} className={category === c.id ? 'active' : ''} onClick={() => scrollTo(c.id)}>
                         {c.name}
@@ -241,7 +302,14 @@ function OrderingApp({ session, soldOut, menu }: { session: TableSession; soldOu
                 ) : (
                   categories.map((c) => (
                     <section key={c.id} id={`cat-${c.id}`} className="c-section">
-                      <h2>{c.name}</h2>
+                      <h2>
+                        <span className="c-section-name">{c.name}</span>
+                        {c.nameTh && (
+                          <span className="c-section-th" lang="th">
+                            {c.nameTh}
+                          </span>
+                        )}
+                      </h2>
                       <div className="menu-grid">
                         {items.filter((m) => m.categoryId === c.id).map((item) => (
                           <MenuItemRow key={item.id} item={item} soldOut={soldOut.includes(item.id)} onPick={setPicking} />
@@ -250,17 +318,10 @@ function OrderingApp({ session, soldOut, menu }: { session: TableSession; soldOu
                     </section>
                   ))
                 )}
-                <button className="credits-link" onClick={() => setCreditsOpen(true)}>
-                  Photo credits
-                </button>
               </main>
             </>
           ) : (
-            <OrdersView orders={orders}>
-              {!wide && orders.length > 0 && (
-                <BillCard orders={orders} session={session} onPay={() => setPayOpen(true)} onRequestBill={requestBill} />
-              )}
-            </OrdersView>
+            <OrdersView orders={orders}>{!wide && orders.length > 0 && <VisitSummary orders={orders} />}</OrdersView>
           )}
         </div>
 
@@ -270,26 +331,24 @@ function OrderingApp({ session, soldOut, menu }: { session: TableSession; soldOu
               <section className="card cart-panel">
                 <h3 className="panel-title">Your order</h3>
                 {cart.length === 0 ? (
-                  <p className="muted small cart-empty">Choose dishes from the menu. They will appear here before you send them to the kitchen.</p>
+                  <p className="muted small cart-empty">Choose dishes from the menu. You pay at checkout, then we bring the food to your table.</p>
                 ) : (
                   <div className="cart-panel-lines">
                     <CartLines lines={cart} setLines={setCart} />
                   </div>
                 )}
-                <button className="btn btn-primary btn-block" disabled={cart.length === 0} onClick={sendOrder}>
-                  Send to kitchen{cartCount > 0 && ` · ${formatAUD(cartTotal)}`}
+                <button className="btn btn-primary btn-block" disabled={cart.length === 0} onClick={checkout}>
+                  Checkout{cartCount > 0 && ` · ${formatAUD(cartTotal)}`}
                 </button>
               </section>
             ) : (
               <>
                 {cartCount > 0 && (
                   <button className="card unsent-note" onClick={() => setTab('menu')}>
-                    {cartCount} {cartCount === 1 ? 'item' : 'items'} not sent yet. <span>Back to your order</span>
+                    {cartCount} {cartCount === 1 ? 'item' : 'items'} in your cart, not ordered yet. <span>Back to checkout</span>
                   </button>
                 )}
-                {orders.length > 0 && (
-                  <BillCard orders={orders} session={session} onPay={() => setPayOpen(true)} onRequestBill={requestBill} />
-                )}
+                {orders.length > 0 && <VisitSummary orders={orders} />}
               </>
             )}
           </aside>
@@ -306,35 +365,7 @@ function OrderingApp({ session, soldOut, menu }: { session: TableSession; soldOu
         </div>
       )}
 
-      {picking && (
-        <ItemSheet
-          item={picking}
-          onClose={() => setPicking(null)}
-          onAdd={(line) => {
-            setCart((c) => [...c, line])
-            setPicking(null)
-            setToast(`Added ${line.quantity} × ${line.name}`)
-          }}
-        />
-      )}
-
-      {cartOpen && (
-        <CartSheet lines={cart} setLines={setCart} onClose={() => setCartOpen(false)} onSend={sendOrder} />
-      )}
-
-      {payOpen && (
-        <PaySheet
-          amount={bill.total}
-          tableNumber={session.tableNumber}
-          sessionToken={session.token}
-          onClose={() => setPayOpen(false)}
-          onPaid={() => actions.settle(session.token, 'stripe', bill.total)}
-        />
-      )}
-
-      {creditsOpen && <PhotoCreditsSheet items={items} onClose={() => setCreditsOpen(false)} />}
-
-      {toast && <div className="toast">{toast}</div>}
+      {overlays}
     </div>
   )
 }
@@ -347,8 +378,11 @@ function searchMenu(query: string, items: MenuItem[], categories: MenuData['cate
     const category = categories.find((c) => c.id === m.categoryId)?.name ?? ''
     const options = (m.optionGroups ?? []).flatMap((g) => g.choices.map((c) => c.name))
     const dietary = (m.dietary ?? []).map((d) => DIETARY_LABEL[d])
-    const text = [m.name, m.description, category, ...options, ...dietary, ...(m.allergens ?? [])].join(' ').toLowerCase()
-    return words.every((w) => text.includes(w))
+    const text = [m.name, m.nameTh, m.description, category, ...options, ...dietary, ...(m.allergens ?? [])]
+      .join(' ')
+      .toLowerCase()
+    // A number on its own finds that dish on the printed menu
+    return words.every((w) => (/^\d+$/.test(w) ? String(m.number) === w : text.includes(w)))
   })
 }
 
@@ -373,7 +407,13 @@ function MenuItemRow({ item, soldOut, onPick }: { item: MenuItem; soldOut: boole
     <button className={`menu-item ${soldOut ? 'sold-out' : ''}`} disabled={soldOut} onClick={() => onPick(item)}>
       <span className="menu-info">
         <span className="menu-name">
-          {item.name}
+          {item.number && <span className="menu-number">{item.number}.</span>}
+          <span className="menu-name-en">{item.name}</span>
+          {item.nameTh && (
+            <span className="menu-name-th" lang="th">
+              {item.nameTh}
+            </span>
+          )}
           {item.recommended && <span className="tag">Popular</span>}
         </span>
         <span className="menu-desc">{item.description}</span>
@@ -404,7 +444,6 @@ function MenuItemRow({ item, soldOut, onPick }: { item: MenuItem; soldOut: boole
 }
 
 function ItemSheet({ item, onClose, onAdd }: { item: MenuItem; onClose: () => void; onAdd: (l: CartLine) => void }) {
-  const credit = creditForImage(item.image)
   const groups = item.optionGroups ?? []
   const [qty, setQty] = useState(1)
   const [note, setNote] = useState('')
@@ -415,7 +454,7 @@ function ItemSheet({ item, onClose, onAdd }: { item: MenuItem; onClose: () => vo
   const options: SelectedOption[] = groups.flatMap((g) =>
     g.choices
       .filter((c) => picked[g.id]?.includes(c.id))
-      .map((c) => ({ groupName: g.name, choiceName: c.name, price: c.price })),
+      .map((c) => ({ groupId: g.id, choiceId: c.id, groupName: g.name, choiceName: c.name, price: c.price })),
   )
   const unitPrice = item.price + options.reduce((n, o) => n + o.price, 0)
 
@@ -453,12 +492,17 @@ function ItemSheet({ item, onClose, onAdd }: { item: MenuItem; onClose: () => vo
       }
     >
       {item.image && <img className="item-hero" src={item.image} alt={item.name} />}
-      {credit && (
-        <a className="photo-credit" href={credit.source} target="_blank" rel="noreferrer">
-          Photo: {credit.author} · {credit.license}
-        </a>
+      {(item.number || item.nameTh) && (
+        <div className="item-names">
+          {item.number && <span className="item-number">No. {item.number}</span>}
+          {item.nameTh && (
+            <span className="menu-name-th" lang="th">
+              {item.nameTh}
+            </span>
+          )}
+        </div>
       )}
-      <p className="muted item-desc">{item.description}</p>
+      {item.description && <p className="muted item-desc">{item.description}</p>}
       <div className="item-price">{formatAUD(item.price)}</div>
       <div className="item-dietary">
         <DietaryInfo item={item} />
@@ -531,12 +575,12 @@ function CartSheet({
   lines,
   setLines,
   onClose,
-  onSend,
+  onCheckout,
 }: {
   lines: CartLine[]
   setLines: React.Dispatch<React.SetStateAction<CartLine[]>>
   onClose: () => void
-  onSend: () => void
+  onCheckout: () => void
 }) {
   const total = lines.reduce((n, l) => n + l.unitPrice * l.quantity, 0)
   return (
@@ -544,8 +588,8 @@ function CartSheet({
       title="Your order"
       onClose={onClose}
       footer={
-        <button className="btn btn-primary btn-block" disabled={lines.length === 0} onClick={onSend}>
-          Send to kitchen · {formatAUD(total)}
+        <button className="btn btn-primary btn-block" disabled={lines.length === 0} onClick={onCheckout}>
+          Checkout · {formatAUD(total)}
         </button>
       }
     >
@@ -555,8 +599,11 @@ function CartSheet({
   )
 }
 
+const PAY_LABEL: Record<string, string> = { stripe: 'Paid on phone', card_terminal: 'Paid by card', cash: 'Paid in cash' }
+
 function OrdersView({ orders, children }: { orders: Order[]; children?: React.ReactNode }) {
   const now = useNow()
+  const waiting = orders.filter((o) => o.payment.status === 'awaiting_counter')
 
   if (orders.length === 0) {
     return (
@@ -568,13 +615,28 @@ function OrdersView({ orders, children }: { orders: Order[]; children?: React.Re
 
   return (
     <main className="c-orders">
+      {waiting.map((o) => (
+        <section key={o.id} className="card pay-at-counter" role="status">
+          <div className="pay-at-counter-label">Pay at the counter</div>
+          <div className="pay-at-counter-number">Order #{o.number}</div>
+          <div className="pay-at-counter-amount">{formatAUD(o.payment.amount)}</div>
+          <p className="muted small">Show this to our staff. We start cooking as soon as it&apos;s paid.</p>
+        </section>
+      ))}
       {[...orders].reverse().map((o) => (
-        <section key={o.id} className="card">
+        <section key={o.id} className={`card ${o.payment.status === 'cancelled' ? 'is-cancelled' : ''}`}>
           <div className="row between">
-            <strong>Round {o.round}</strong>
+            <strong>Order #{o.number}</strong>
             <span className="muted small">
               {formatTime(o.createdAt)} · {formatElapsed(o.createdAt, now)}
             </span>
+          </div>
+          <div className={`order-pay order-pay-${o.payment.status}`}>
+            {o.payment.status === 'paid'
+              ? `${PAY_LABEL[o.payment.method ?? 'stripe']} · ${formatAUD(o.payment.amount)}`
+              : o.payment.status === 'awaiting_counter'
+                ? `Waiting for payment at the counter · ${formatAUD(o.payment.amount)}`
+                : 'Cancelled, not paid'}
           </div>
           <ul className="line-list">
             {o.items.map((i) => (
@@ -585,7 +647,7 @@ function OrdersView({ orders, children }: { orders: Order[]; children?: React.Re
                   </div>
                   {i.options.length > 0 && <div className="muted small">{i.options.map((x) => x.choiceName).join(', ')}</div>}
                 </div>
-                <StatusBadge status={i.status} />
+                {o.payment.status === 'awaiting_counter' ? <span className="muted small">Not paid yet</span> : <StatusBadge status={i.status} />}
               </li>
             ))}
           </ul>
@@ -596,67 +658,32 @@ function OrdersView({ orders, children }: { orders: Order[]; children?: React.Re
   )
 }
 
-function BillCard({
-  orders,
-  session,
-  onPay,
-  onRequestBill,
-}: {
-  orders: Order[]
-  session: TableSession
-  onPay: () => void
-  onRequestBill: () => void
-}) {
-  const bill = calculateBill(orders)
+/** What this table has paid so far; with pay first there is no bill at the end */
+function VisitSummary({ orders }: { orders: Order[] }) {
+  const paid = orders.filter((o) => o.payment.status === 'paid')
+  const total = paid.reduce((n, o) => n + o.payment.amount, 0)
+  const waiting = orders.filter((o) => o.payment.status === 'awaiting_counter')
   return (
     <section className="card bill">
-      <h3>Bill so far</h3>
+      <h3>This visit</h3>
+      <div className="row between">
+        <span>Paid orders</span>
+        <span>{paid.length}</span>
+      </div>
       <div className="row between total">
-        <span>Total</span>
-        <span>{formatAUD(bill.total)}</span>
+        <span>Paid so far</span>
+        <span>{formatAUD(total)}</span>
       </div>
       <div className="row between muted">
         <span>Includes GST</span>
-        <span>{formatAUD(bill.gst)}</span>
+        <span>{formatAUD(gstIncluded(total))}</span>
       </div>
-      <div className="row gap">
-        <button className="btn btn-outline grow" disabled={!!session.billRequestedAt} onClick={onRequestBill}>
-          {session.billRequestedAt ? 'Bill requested' : 'Ask for bill'}
-        </button>
-        <button className="btn btn-primary grow" disabled={bill.total === 0} onClick={onPay}>
-          Pay now
-        </button>
-      </div>
+      {waiting.length > 0 && (
+        <p className="small visit-waiting">
+          {waiting.length === 1 ? 'One order is' : `${waiting.length} orders are`} waiting for payment at the counter.
+        </p>
+      )}
+      <p className="muted small visit-note">Everything is paid when you order, so there&apos;s no bill at the end. Want more? Order again from the menu.</p>
     </section>
-  )
-}
-
-function PhotoCreditsSheet({ items, onClose }: { items: MenuItem[]; onClose: () => void }) {
-  return (
-    <Sheet title="Photo credits" onClose={onClose}>
-      <p className="muted small">Sample photos from Wikimedia Commons, used under the licences below.</p>
-      <ul className="line-list credits-list">
-        {items.flatMap((m) => {
-          const c = creditForImage(m.image)
-          if (!c) return []
-          return (
-            <li key={m.id} className="line">
-              <div className="grow">
-                <div className="line-name">{m.name}</div>
-                <div className="muted small">
-                  <a href={c.source} target="_blank" rel="noreferrer">
-                    {c.author}
-                  </a>{' '}
-                  ·{' '}
-                  <a href={c.licenseUrl} target="_blank" rel="noreferrer">
-                    {c.license}
-                  </a>
-                </div>
-              </div>
-            </li>
-          )
-        })}
-      </ul>
-    </Sheet>
   )
 }
