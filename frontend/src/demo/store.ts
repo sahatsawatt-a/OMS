@@ -1,15 +1,18 @@
 // Client-side store backed by the OMS API.
-// Staff screens poll GET /api/staff/state (needs the staff key); a guest's phone polls
-// GET /api/sessions/{token} (the QR token is the guest's key). Actions call the API and refresh,
-// so every device sees the same tables and orders within a couple of seconds.
+// Staff screens load GET /api/staff/state (needs the staff key); a guest's phone loads
+// GET /api/sessions/{token} (the QR token is the guest's key). They load again whenever the
+// server says something changed (lib/live.ts), so every device sees the same tables and orders
+// straight away. Actions call the API and refresh.
 import { useEffect, useSyncExternalStore } from 'react'
 import { api, ApiError, currentStaffKey, onStaffKeyChange } from '../lib/api'
+import { onLiveChange } from '../lib/live'
 import { shortId } from './ids'
 import type { CartLine, DemoState, GuestState, ItemStatus, MenuItem, Order, PaymentMethod, TableSession } from './types'
 
 export { randomToken } from './ids'
 
-const POLL_MS = 2000
+// In case a change notice is missed (e.g. a socket that died without closing)
+const SAFETY_REFRESH_MS = 30_000
 
 type Listener = () => void
 
@@ -18,6 +21,7 @@ function polled<T>(load: () => Promise<T>) {
   let value: T | null = null
   let error: ApiError | null = null
   let timer: number | undefined
+  let stopLive: (() => void) | undefined
   let inFlight: Promise<void> | null = null
   let users = 0
   const listeners = new Set<Listener>()
@@ -39,17 +43,23 @@ function polled<T>(load: () => Promise<T>) {
     return inFlight
   }
 
+  // Background tabs skip refreshes; lib/live.ts catches them up when they become visible
+  const refreshIfVisible = () => {
+    if (document.visibilityState === 'visible') void refresh()
+  }
+
   const start = () => {
     if (users++ === 0) {
       void refresh()
-      timer = window.setInterval(() => {
-        // Slow down in background tabs
-        if (document.visibilityState === 'visible') void refresh()
-      }, POLL_MS)
+      stopLive = onLiveChange(refreshIfVisible)
+      timer = window.setInterval(refreshIfVisible, SAFETY_REFRESH_MS)
     }
   }
   const stop = () => {
-    if (--users === 0) window.clearInterval(timer)
+    if (--users === 0) {
+      window.clearInterval(timer)
+      stopLive?.()
+    }
   }
 
   return {

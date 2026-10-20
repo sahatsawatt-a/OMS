@@ -72,7 +72,7 @@ Per-person staff logins and roles (REQ-28) are not built yet; one shared staff k
 | CMP-5 Staff app               | Open table session & QR, table overview, needs-attention queue, counter payments, serve, clear | Built, on the API |
 | CMP-6 Kitchen display         | See incoming items, update item status                                      | Removed for now (RQ-21) |
 | CMP-2 Admin back office       | Manage menu, mark sold out, reports; refunds and tables later               | Built (refunds, table editing later) |
-| CMP-3 Backend API             | Staff key, table sessions & QR tokens, order lifecycle, polling updates; per-person logins later | Built (REQ-32) |
+| CMP-3 Backend API             | Staff key, table sessions & QR tokens, order lifecycle, live updates over a WebSocket; per-person logins later | Built (REQ-32) |
 | CMP-4 Payments (Stripe)       | Payment Intents priced by the server, server-side confirmation, webhooks; refunds later | Built, test mode |
 
 **Item lifecycle:** `submitted → served`, or `cancelled` (unpaid counter orders). The kitchen states `preparing` and `ready` are removed for now.
@@ -131,7 +131,7 @@ Priority: **H** first release, **N** normal, **L** later.
 - **REQ-14 Security:** no card data on our servers; verified Stripe webhooks; secrets only in env vars; HTTPS on the public demo; backend input validation; session tokens unguessable and useless once closed; staff key compared in constant time; no key configured = staff screens locked.
 - **REQ-15 Money and records:** amounts as integer cents with currency; orders/payments never hard-deleted (except the demo's "reset sample data"); schema changes via migrations; daily backups *(not set up yet)*.
 - **Usability (RQ-6):** guest ordering works on phone, iPad and PC; staff app works on tablet and phone.
-- **Live updates:** screens poll the API every 2 seconds (WebSocket/SSE later if needed).
+- **Live updates:** a WebSocket (`/api/ws`) tells screens when data changed and they reload it (REQ-34); a 30-second safety refresh covers missed notices. Uploaded dish photos are served as separate cached files (REQ-35).
 
 ## 7. Phase 2: working demo (current)
 

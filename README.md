@@ -54,7 +54,7 @@ Guest pays first   ──► POST /api/sessions/{token}/orders {lines, pay: "str
                          stripe:  PaymentIntent for that amount → card form → confirm-payment
                                   (server asks Stripe; the webhook does the same) → paid, numbered
                          counter: order #N waits until staff press Card / Cash
-Staff              ──► GET  /api/staff/state (polled every 2 s): tables, sessions, orders, menu
+Staff              ──► GET  /api/staff/state (reloaded on each change): tables, sessions, orders, menu
                        counter-payment · served · close (refused while an order is unpaid)
 ```
 
@@ -80,7 +80,7 @@ OMS/
 ├── frontend/
 │   ├── src/
 │   │   ├── App.tsx             # routes: /, /staff, /order, /admin
-│   │   ├── demo/store.ts       # API-backed store (polling) and actions
+│   │   ├── demo/store.ts       # API-backed store (live updates) and actions
 │   │   ├── components/         # shared UI, staff-key gate, design switch
 │   │   ├── designs.css         # Heritage and Night designs over the base styles
 │   │   ├── pages/              # customer, staff, admin (menu, reports), home

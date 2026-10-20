@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 
-from app.api.routes import demo, guest, health, menu, payments, staff
+from app.api.routes import demo, guest, health, live, menu, payments, staff
 
 api_router = APIRouter(prefix="/api")
 api_router.include_router(health.router)
@@ -10,3 +10,4 @@ api_router.include_router(guest.router)
 api_router.include_router(staff.router)
 api_router.include_router(payments.router)
 api_router.include_router(demo.router)
+api_router.include_router(live.router)

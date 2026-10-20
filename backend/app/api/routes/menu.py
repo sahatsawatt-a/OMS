@@ -2,15 +2,16 @@ import re
 import secrets
 import unicodedata
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Response
 from sqlalchemy import exists, func, select
 from sqlalchemy.orm import Session
 
 from app.core.security import require_staff
 from app.db.session import get_db
-from app.models import MenuCategory, MenuItem, OptionGroup, OrderItem
+from app.models import MenuCategory, MenuItem, MenuPhoto, OptionGroup, OrderItem
 from app.schemas import CategoryIn, CreatedId, FlagIn, MenuItemIn, MenuItemOut, MenuOut, MoveIn
 from app.seed import reset_menu, set_option_groups
+from app.services.photos import store_photo
 from app.services.views import item_out, menu_out
 
 router = APIRouter(prefix="/menu", tags=["menu"])
@@ -28,6 +29,19 @@ def slug(text: str) -> str:
 def get_menu(db: Session = Depends(get_db)) -> MenuOut:
     """The menu guests see: hidden dishes left out. Public, like a printed menu."""
     return menu_out(db, include_hidden=False)
+
+
+@router.get("/photos/{photo_id}")
+def get_photo(photo_id: str, db: Session = Depends(get_db)) -> Response:
+    """An uploaded dish photo. Its id is a hash of the bytes, so browsers may keep it for good."""
+    photo = db.get(MenuPhoto, photo_id)
+    if photo is None:
+        raise HTTPException(404, "Unknown photo")
+    return Response(
+        photo.data,
+        media_type=photo.content_type,
+        headers={"Cache-Control": "public, max-age=31536000, immutable"},
+    )
 
 
 @staff.get("/all", response_model_exclude_none=True)
@@ -66,7 +80,7 @@ def save_item(item_id: str, body: MenuItemIn, db: Session = Depends(get_db)) -> 
     item.number = body.number
     item.description = body.description.strip()
     item.price = body.price
-    item.image = body.image or None
+    item.image = store_photo(db, body.image)
     item.recommended = bool(body.recommended)
     item.dietary = list(dict.fromkeys(body.dietary))
     item.allergens = list(dict.fromkeys(body.allergens))

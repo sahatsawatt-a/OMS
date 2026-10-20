@@ -1,11 +1,23 @@
-from sqlalchemy import JSON, Boolean, ForeignKey, Integer, String, Text
-from sqlalchemy.dialects.mysql import MEDIUMTEXT
+from sqlalchemy import JSON, Boolean, ForeignKey, Integer, LargeBinary, String, Text
+from sqlalchemy.dialects.mysql import MEDIUMBLOB, MEDIUMTEXT
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
 
-# Photos uploaded in the admin page arrive as resized JPEG data URLs
+# Dish photo links; before migration 0003 uploaded photos were stored here as data URLs
 PhotoText = Text().with_variant(MEDIUMTEXT(), "mysql")
+PhotoBytes = LargeBinary().with_variant(MEDIUMBLOB(), "mysql")
+
+
+class MenuPhoto(Base):
+    """A photo uploaded in the admin page, served at /api/menu/photos/<id> (services/photos.py)."""
+
+    __tablename__ = "menu_photos"
+
+    # sha256 of the bytes
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    content_type: Mapped[str] = mapped_column(String(32))
+    data: Mapped[bytes] = mapped_column(PhotoBytes)
 
 
 class MenuCategory(Base):

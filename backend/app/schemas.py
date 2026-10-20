@@ -12,7 +12,8 @@ ItemStatus = Literal["submitted", "served", "cancelled"]
 PaymentStatus = Literal["pending", "awaiting_counter", "paid", "cancelled"]
 PaymentMethod = Literal["stripe", "cash", "card_terminal"]
 
-# A resized JPEG from the admin page is ~100-300 KB as a data URL; refuse anything silly
+# A resized JPEG from the admin page is ~100-300 KB as a data URL (stored apart, see
+# app/services/photos.py); refuse anything silly
 MAX_IMAGE_CHARS = 3_000_000
 
 
