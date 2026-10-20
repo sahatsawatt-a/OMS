@@ -438,3 +438,20 @@
     grid-template-columns: 1fr;
   }
 }
+
+/* Admin key prompt, shown when the menu is saved on the backend */
+.admin-gate {
+  max-width: 420px;
+  margin: 64px auto;
+  padding: 0 16px;
+  display: grid;
+  gap: 16px;
+}
+
+.admin-gate h1 {
+  margin: 0;
+}
+
+.admin-gate p {
+  margin: 0;
+}

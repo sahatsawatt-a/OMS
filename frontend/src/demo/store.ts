@@ -1,11 +1,26 @@
 // Mock "backend" for the frontend demo.
 // State lives in localStorage so Staff, Kitchen and Customer tabs in the same browser
 // stay in sync live (via the `storage` event). Replace these actions with API calls later.
+// The menu already comes from the real backend when it is running (see "Menu from the
+// backend" below); tables, orders and payments are still browser-only.
 import { useSyncExternalStore } from 'react'
+import { api, ApiError } from '../lib/api'
 import { randomToken, shortId } from './ids'
 import { defaultMenu, TABLES } from './mockData'
 import { emptyState, seedState } from './seed'
-import type { CartLine, DemoState, ItemStatus, MenuItem, PaymentMethod, TableSession } from './types'
+import type {
+  Allergen,
+  CartLine,
+  DemoState,
+  DietaryTag,
+  ItemStatus,
+  MenuCategory,
+  MenuData,
+  MenuItem,
+  OptionGroup,
+  PaymentMethod,
+  TableSession,
+} from './types'
 
 // Bump when stored data changes meaning: v3 = prices in AUD cents (v2 held THB satang)
 const STORAGE_KEY = 'oms-demo-v3'
@@ -72,6 +87,171 @@ function subscribe(listener: () => void) {
 export function useDemoState(): DemoState {
   return useSyncExternalStore(subscribe, () => state)
 }
+
+// ---- Menu from the backend ----
+// When the API answers, the menu is loaded from MySQL and admin edits are saved there, so
+// every device shows the same menu (checked again every few seconds). When it doesn't,
+// e.g. `npm run dev` without the backend, the menu stays in this browser as before.
+
+type ServerItem = {
+  id: string
+  categoryId: string
+  name: string
+  description: string
+  price: number
+  image: string | null
+  recommended: boolean
+  optionGroups: OptionGroup[]
+  dietary: DietaryTag[]
+  allergens: Allergen[]
+  hidden: boolean
+  soldOut: boolean
+}
+type ServerMenu = { categories: MenuCategory[]; items: ServerItem[] }
+
+export type MenuSync = {
+  /** Where the menu comes from: still checking, the backend, or this browser only */
+  source: 'connecting' | 'server' | 'browser'
+  /** Why the last save failed, shown on the admin page */
+  error: string | null
+  /** Key for the admin endpoints (ADMIN_API_KEY in backend/.env) */
+  adminKey: string
+}
+
+const ADMIN_KEY_STORAGE = 'oms-admin-key'
+const MENU_POLL_MS = 5000
+
+function readAdminKey(): string {
+  try {
+    return localStorage.getItem(ADMIN_KEY_STORAGE) ?? ''
+  } catch {
+    return ''
+  }
+}
+
+let sync: MenuSync = { source: 'connecting', error: null, adminKey: readAdminKey() }
+const syncListeners = new Set<() => void>()
+
+function setSync(patch: Partial<MenuSync>) {
+  sync = { ...sync, ...patch }
+  syncListeners.forEach((l) => l())
+}
+
+export function useMenuSync(): MenuSync {
+  return useSyncExternalStore(
+    (listener) => {
+      syncListeners.add(listener)
+      return () => syncListeners.delete(listener)
+    },
+    () => sync,
+  )
+}
+
+/** Remember the admin key in this browser ('' forgets it) and reload the full menu */
+export function setAdminKey(key: string, error: string | null = null) {
+  try {
+    if (key) localStorage.setItem(ADMIN_KEY_STORAGE, key)
+    else localStorage.removeItem(ADMIN_KEY_STORAGE)
+  } catch {
+    // Not remembered; it still works until the page is reloaded
+  }
+  setSync({ adminKey: key, error })
+  if (key) void refreshMenu()
+}
+
+function toMenuItem(i: ServerItem): MenuItem {
+  return {
+    id: i.id,
+    categoryId: i.categoryId,
+    name: i.name,
+    description: i.description,
+    price: i.price,
+    image: i.image ?? undefined,
+    recommended: i.recommended || undefined,
+    optionGroups: i.optionGroups,
+    dietary: i.dietary,
+    allergens: i.allergens,
+    hidden: i.hidden || undefined,
+  }
+}
+
+async function fetchServerMenu(): Promise<ServerMenu> {
+  if (sync.adminKey) {
+    try {
+      // The admin view also includes hidden dishes
+      return await api<ServerMenu>('/admin/menu', { headers: { 'X-Admin-Key': sync.adminKey } })
+    } catch (e) {
+      if (!(e instanceof ApiError) || (e.status !== 401 && e.status !== 503)) throw e
+      setAdminKey('', e.status === 401 ? 'That admin key was not accepted.' : e.message)
+    }
+  }
+  return api<ServerMenu>('/menu')
+}
+
+/** Saves waiting to reach the server; refreshes wait for them so edits don't flicker back */
+let pendingSaves = 0
+let saveQueue: Promise<void> = Promise.resolve()
+
+export async function refreshMenu() {
+  try {
+    const server = await fetchServerMenu()
+    if (pendingSaves > 0) return
+    const menu: MenuData = {
+      categories: server.categories.map(({ id, name }) => ({ id, name })),
+      items: server.items.map(toMenuItem),
+    }
+    const soldOut = server.items.filter((i) => i.soldOut).map((i) => i.id)
+    if (JSON.stringify([menu, soldOut]) !== JSON.stringify([state.menu, state.soldOut])) {
+      update((d) => {
+        d.menu = menu
+        d.soldOut = soldOut
+      })
+    }
+    if (sync.source !== 'server') setSync({ source: 'server' })
+  } catch {
+    // Backend not running (or no menu tables yet): keep using this browser's menu
+    if (sync.source !== 'browser') setSync({ source: 'browser' })
+  }
+}
+
+/** Send an admin change to the server, one at a time and in order. No-op in browser mode. */
+function saveToServer(method: 'PUT' | 'PATCH' | 'DELETE', path: string, body?: unknown) {
+  if (sync.source !== 'server') return
+  pendingSaves++
+  const headers = { 'X-Admin-Key': sync.adminKey }
+  saveQueue = saveQueue
+    .then(() =>
+      api(`/admin/menu${path}`, {
+        method,
+        headers,
+        body: body === undefined ? undefined : JSON.stringify(body),
+      }),
+    )
+    .then(
+      () => setSync({ error: null }),
+      (e: Error) => {
+        if (e instanceof ApiError && e.status === 401) {
+          setAdminKey('', 'That admin key was not accepted, so the change was not saved.')
+        } else {
+          setSync({ error: `The change could not be saved: ${e.message}` })
+        }
+      },
+    )
+    .finally(() => {
+      pendingSaves--
+      // Load what the server now has; this also undoes a change it refused
+      if (pendingSaves === 0) void refreshMenu()
+    })
+}
+
+const itemPath = (id: string) => `/items/${encodeURIComponent(id)}`
+const categoryPath = (id: string) => `/categories/${encodeURIComponent(id)}`
+
+void refreshMenu()
+window.setInterval(() => {
+  if (document.visibilityState === 'visible') void refreshMenu()
+}, MENU_POLL_MS)
+window.addEventListener('focus', () => void refreshMenu())
 
 // Allowed item status changes (REQ-22)
 const NEXT_STATUS: Record<ItemStatus, ItemStatus[]> = {
@@ -189,11 +369,11 @@ export const actions = {
   },
 
   toggleSoldOut(menuItemId: string) {
+    const soldOut = !state.soldOut.includes(menuItemId)
     update((d) => {
-      d.soldOut = d.soldOut.includes(menuItemId)
-        ? d.soldOut.filter((id) => id !== menuItemId)
-        : [...d.soldOut, menuItemId]
+      d.soldOut = soldOut ? [...d.soldOut, menuItemId] : d.soldOut.filter((id) => id !== menuItemId)
     })
+    saveToServer('PATCH', itemPath(menuItemId), { soldOut })
   },
 
   /** Back to the sample tables and orders; the menu (and admin edits to it) is kept */
@@ -214,11 +394,25 @@ export const actions = {
 
   /** Add a dish or replace the one with the same id */
   saveMenuItem(item: MenuItem): boolean {
-    return update((d) => {
+    const savedHere = update((d) => {
       const i = d.menu.items.findIndex((m) => m.id === item.id)
       if (i >= 0) d.menu.items[i] = item
       else d.menu.items.push(item)
     })
+    saveToServer('PUT', itemPath(item.id), {
+      categoryId: item.categoryId,
+      name: item.name,
+      description: item.description,
+      price: item.price,
+      image: item.image ?? null,
+      recommended: !!item.recommended,
+      optionGroups: item.optionGroups ?? [],
+      dietary: item.dietary ?? [],
+      allergens: item.allergens ?? [],
+      hidden: !!item.hidden,
+    })
+    // With the backend, a full browser storage doesn't matter: the server keeps the dish
+    return savedHere || sync.source === 'server'
   },
 
   setMenuItemHidden(id: string, hidden: boolean) {
@@ -226,15 +420,18 @@ export const actions = {
       const item = d.menu.items.find((m) => m.id === id)
       if (item) item.hidden = hidden
     })
+    saveToServer('PATCH', itemPath(id), { hidden })
   },
 
   /** Only dishes that were never ordered can be deleted; others are hidden instead */
   deleteMenuItem(id: string): boolean {
     if (state.orders.some((o) => o.items.some((i) => i.menuItemId === id))) return false
-    return update((d) => {
+    const savedHere = update((d) => {
       d.menu.items = d.menu.items.filter((m) => m.id !== id)
       d.soldOut = d.soldOut.filter((s) => s !== id)
     })
+    saveToServer('DELETE', itemPath(id))
+    return savedHere || sync.source === 'server'
   },
 
   addCategory(name: string): string {
@@ -242,6 +439,7 @@ export const actions = {
     update((d) => {
       d.menu.categories.push({ id, name })
     })
+    saveToServer('PUT', categoryPath(id), { name })
     return id
   },
 
@@ -250,28 +448,35 @@ export const actions = {
       const c = d.menu.categories.find((x) => x.id === id)
       if (c) c.name = name
     })
+    saveToServer('PUT', categoryPath(id), { name })
   },
 
   moveCategory(id: string, delta: -1 | 1) {
+    const list = state.menu.categories
+    const i = list.findIndex((c) => c.id === id)
+    const j = i + delta
+    if (i < 0 || j < 0 || j >= list.length) return
     update((d) => {
-      const list = d.menu.categories
-      const i = list.findIndex((c) => c.id === id)
-      const j = i + delta
-      if (i < 0 || j < 0 || j >= list.length) return
-      ;[list[i], list[j]] = [list[j], list[i]]
+      const cats = d.menu.categories
+      ;[cats[i], cats[j]] = [cats[j], cats[i]]
     })
+    saveToServer('PUT', '/categories/order', { ids: state.menu.categories.map((c) => c.id) })
   },
 
   /** Only empty categories can be deleted */
   deleteCategory(id: string): boolean {
     if (state.menu.items.some((m) => m.categoryId === id)) return false
-    return update((d) => {
+    const savedHere = update((d) => {
       d.menu.categories = d.menu.categories.filter((c) => c.id !== id)
     })
+    saveToServer('DELETE', categoryPath(id))
+    return savedHere || sync.source === 'server'
   },
 
-  /** Put the sample menu back (sold-out marks are cleared too) */
+  /** Put the sample menu back (sold-out marks are cleared too). Browser mode only: with the
+   * backend, reload the sample menu with `python -m app.seed_menu` instead. */
   resetMenu() {
+    if (sync.source === 'server') return
     update((d) => {
       d.menu = defaultMenu()
       d.soldOut = []

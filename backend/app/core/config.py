@@ -12,6 +12,8 @@ class Settings(BaseSettings):
     stripe_secret_key: str = ""
     stripe_publishable_key: str = ""
     stripe_webhook_secret: str = ""
+    # Protects the menu admin API until staff login exists
+    admin_api_key: str = ""
 
     @property
     def cors_origin_list(self) -> list[str]:
