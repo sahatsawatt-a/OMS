@@ -17,7 +17,7 @@ Open <http://localhost:5180>. Staff screens ask once for the **staff key** (`STA
 | --------------- | ------------------------------ | ------------------------------------------------------------- |
 | Home            | `/`                            | Overview, links to every screen; with the staff key: links to seated tables, reset sample data |
 | Front of house  | `/staff`                       | Seat guests → QR code; take counter payments (Card / Cash); mark food served; clear the table when guests leave |
-| Customer menu   | `/order?table=N&session=TOKEN` | Opened from the QR: Ying Thai 2's menu with Thai names and dish numbers, search by name, number or label (e.g. `32`, `gluten free`), options with exact printed prices, pay on phone (Stripe) or at the counter, follow orders, call waiter |
+| Customer menu   | `/order?table=N#s=TOKEN` | Opened from the QR; each phone joins as A, B, C… and sees its own orders or the whole table: Ying Thai 2's menu with Thai names and dish numbers, search by name, number or label (e.g. `32`, `gluten free`), options with exact printed prices, pay on phone (Stripe) or at the counter, follow orders, call waiter |
 | Menu admin      | `/admin`                       | Add, edit, hide or delete dishes (price, photo, dietary labels, allergens, options); mark sold out; manage categories |
 | Reports         | `/admin?tab=reports`           | Sales, busiest times, GST / BAS. Today's real orders plus generated sample history |
 
@@ -47,18 +47,21 @@ The tunnel serves a **production build** (nginx, `web` service, also on <http://
 ## How it works
 
 ```
-Staff seat guests ──► POST /api/tables/{id}/sessions ──► session token (QR: /order?table=N&session=TOKEN)
-Guest opens QR     ──► GET  /api/sessions/{token}     ──► table, menu, this visit's orders
-Guest pays first   ──► POST /api/sessions/{token}/orders {lines, pay: "stripe" | "counter"}
+Staff seat guests ──► POST /api/tables/{id}/sessions ──► session token (QR: /order?table=N#s=TOKEN)
+Phone scans QR     ──► POST /api/guest/join (X-Session-Token) ──► this phone's device token + letter A, B, C…
+                         kept in localStorage; the QR token is taken out of the address
+Phone shows table  ──► GET  /api/guest/state (X-Device-Token) ──► table, menu, the table's orders
+Guest pays first   ──► POST /api/guest/orders {lines, pay: "stripe" | "counter"} (at most 2 waiting at the counter)
                          server prices the lines from the menu in MySQL
                          stripe:  PaymentIntent for that amount → card form → confirm-payment
                                   (server asks Stripe; the webhook does the same) → paid, numbered
                          counter: order #N waits until staff press Card / Cash
 Staff              ──► GET  /api/staff/state (reloaded on each change): tables, sessions, orders, menu
-                       counter-payment · served · close (refused while an order is unpaid)
+                       counter-payment · served · remove a phone · close (refused while an order is unpaid)
 ```
 
 Order numbers restart at 101 each day (Melbourne time). Money is integer cents, AUD, GST included.
+Tokens never appear in a URL: the QR token sits after `#` (never sent to a server) and API calls send tokens in headers.
 
 ## Project structure
 

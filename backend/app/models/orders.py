@@ -4,7 +4,7 @@ from sqlalchemy import JSON, Date, DateTime, ForeignKey, Integer, String, Unique
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
-from app.models.tables import TableSession
+from app.models.tables import TableDevice, TableSession
 
 
 class Order(Base):
@@ -23,6 +23,10 @@ class Order(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     session_id: Mapped[int] = mapped_column(ForeignKey("table_sessions.id"), index=True)
+    # The phone that placed it; empty for orders from before phones had their own ids
+    device_id: Mapped[int | None] = mapped_column(
+        ForeignKey("table_devices.id"), index=True, nullable=True
+    )
     table_number: Mapped[int] = mapped_column(Integer)
     round: Mapped[int] = mapped_column(Integer)
     # Short number read out at the counter, from 101 each day; given once the order is visible
@@ -39,6 +43,7 @@ class Order(Base):
     cancelled_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
     session: Mapped[TableSession] = relationship(lazy="joined")
+    device: Mapped[TableDevice | None] = relationship(lazy="joined")
     items: Mapped[list["OrderItem"]] = relationship(
         order_by="OrderItem.id", cascade="all, delete-orphan", lazy="selectin"
     )

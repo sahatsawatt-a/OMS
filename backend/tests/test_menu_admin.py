@@ -44,11 +44,8 @@ def test_dish_validation(staff):
     assert staff.put("/api/menu/items/Bad Id", json=NEW_DISH).status_code == 422
 
 
-def test_ordered_dishes_cannot_be_deleted(staff, seated):
-    staff.post(
-        f"/api/sessions/{seated}/orders",
-        json={"lines": [{"menuItemId": "gai-tod", "quantity": 1}], "pay": "counter"},
-    )
+def test_ordered_dishes_cannot_be_deleted(staff, phone):
+    phone.order([{"menuItemId": "gai-tod", "quantity": 1}])
     assert staff.delete("/api/menu/items/gai-tod").status_code == 409
     assert staff.delete("/api/menu/items/kuy-chay").status_code == 200
 

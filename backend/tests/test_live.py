@@ -8,9 +8,9 @@ def test_a_change_is_announced(staff, client):
         assert ws.receive_json() == {"type": "changed"}
 
 
-def test_guest_order_is_announced(staff, client, seated):
+def test_guest_order_is_announced(client, phone):
     with client.websocket_connect("/api/ws") as ws:
-        res = client.post(f"/api/sessions/{seated}/waiter")
+        res = phone.post("/api/guest/waiter")
         assert res.status_code == 200
         assert ws.receive_json() == {"type": "changed"}
 

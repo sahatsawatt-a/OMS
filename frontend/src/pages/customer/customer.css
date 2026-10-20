@@ -357,6 +357,50 @@
   flex-direction: column;
   gap: 12px;
 }
+/* My orders / Whole table (REQ-37) */
+.c-scope {
+  display: flex;
+  padding: 3px;
+  background: var(--surface-2);
+  border-radius: var(--radius-sm);
+}
+.c-scope button {
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 40px;
+  border: 0;
+  border-radius: 5px;
+  background: none;
+  font: inherit;
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: var(--muted);
+  cursor: pointer;
+}
+.c-scope button.active {
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: 0 1px 2px rgb(28 27 25 / 10%);
+}
+/* Which phone at the table placed an order */
+.phone-tag {
+  margin-left: 8px;
+  padding: 2px 7px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--muted);
+  vertical-align: 2px;
+}
+.phone-tag.is-me {
+  border-color: var(--text);
+  color: var(--text);
+}
+
 .empty {
   text-align: center;
   color: var(--muted);

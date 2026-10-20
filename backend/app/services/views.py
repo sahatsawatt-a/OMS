@@ -9,6 +9,8 @@ from app.core.clock import to_ms
 from app.models import DiningTable, MenuCategory, MenuItem, OptionGroup, Order, TableSession
 from app.schemas import (
     CategoryOut,
+    DeviceOut,
+    GuestSessionOut,
     MenuItemOut,
     MenuOut,
     OptionGroupOut,
@@ -66,9 +68,27 @@ def table_out(t: DiningTable) -> TableOut:
 
 
 def session_out(s: TableSession) -> SessionOut:
+    """Staff view, with the QR token and the phones that joined."""
     return SessionOut(
+        id=s.id,
         token=s.token,
         table_id=s.table_id,
+        table_number=s.table.number,
+        guests=s.guests,
+        status=s.status,
+        opened_at=to_ms(s.opened_at),
+        closed_at=to_ms(s.closed_at),
+        waiter_called_at=to_ms(s.waiter_called_at),
+        devices=[
+            DeviceOut(label=d.label, joined_at=to_ms(d.joined_at), removed_at=to_ms(d.removed_at))
+            for d in s.devices
+        ],
+    )
+
+
+def guest_session_out(s: TableSession) -> GuestSessionOut:
+    """Guest view: no QR token, so a phone staff removed can't use it to join again."""
+    return GuestSessionOut(
         table_number=s.table.number,
         guests=s.guests,
         status=s.status,
@@ -78,11 +98,12 @@ def session_out(s: TableSession) -> SessionOut:
     )
 
 
-def order_out(o: Order) -> OrderOut:
+def order_out(o: Order, staff: bool = True) -> OrderOut:
     return OrderOut(
         id=str(o.id),
         number=o.number,
-        session_token=o.session.token,
+        session_token=o.session.token if staff else None,
+        device=o.device.label if o.device else None,
         table_number=o.table_number,
         round=o.round,
         created_at=to_ms(o.created_at),

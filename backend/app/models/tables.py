@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, Integer, String
+from sqlalchemy import DateTime, ForeignKey, Integer, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -34,3 +34,29 @@ class TableSession(Base):
     waiter_called_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
     table: Mapped[DiningTable] = relationship(lazy="joined")
+    devices: Mapped[list["TableDevice"]] = relationship(
+        order_by="TableDevice.id", lazy="selectin", back_populates="session"
+    )
+
+
+class TableDevice(Base):
+    """
+    One phone at a table: A, B, C... in the order they joined (REQ-37).
+
+    A phone joins once with the QR code's token and from then on uses its own token, kept in
+    its browser, so the QR token never has to stay on the phone or in a URL (REQ-36).
+    """
+
+    __tablename__ = "table_devices"
+    __table_args__ = (UniqueConstraint("session_id", "label", name="uq_table_devices_label"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    session_id: Mapped[int] = mapped_column(ForeignKey("table_sessions.id"), index=True)
+    label: Mapped[str] = mapped_column(String(3))
+    # 128 random bits, base64url
+    token: Mapped[str] = mapped_column(String(64), unique=True)
+    joined_at: Mapped[datetime] = mapped_column(DateTime)
+    # Staff removed this phone; its token no longer works
+    removed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+    session: Mapped[TableSession] = relationship(lazy="joined", back_populates="devices")

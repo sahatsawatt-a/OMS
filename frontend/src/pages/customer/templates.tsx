@@ -7,11 +7,13 @@ import { Icon } from '../../components/Icon'
 import { Sheet } from '../../components/shared'
 import { RESTAURANT_NAME } from '../../demo/mockData'
 import { formatAUD } from '../../demo/money'
-import type { MenuCategory, MenuItem, TableSession } from '../../demo/types'
+import type { GuestSession, MenuCategory, MenuItem } from '../../demo/types'
 import './templates.css'
 
 export type TemplateProps = {
-  session: TableSession
+  session: GuestSession
+  /** This phone's letter at the table (REQ-37) */
+  device: string
   items: MenuItem[]
   categories: MenuCategory[]
   soldOut: string[]
@@ -32,7 +34,7 @@ export type TemplateProps = {
 
 const LOGO = '/brand/ying-thai-2-logo.png'
 
-const guestsLine = (s: TableSession) => `Table ${s.tableNumber} · ${s.guests} ${s.guests === 1 ? 'guest' : 'guests'}`
+const guestsLine = (s: GuestSession, device: string) => `Table ${s.tableNumber} · Phone ${device}`
 
 const resultsLine = (query: string, n: number) =>
   n === 0 ? `No dishes match “${query.trim()}”.` : `${n} ${n === 1 ? 'dish' : 'dishes'} found`
@@ -163,7 +165,7 @@ export function BookMenu(p: TemplateProps) {
       <header className="book-head">
         <img className="book-logo" src={LOGO} alt="" width={64} height={64} />
         <div className="book-name">{RESTAURANT_NAME}</div>
-        <div className="book-table">{guestsLine(p.session)}</div>
+        <div className="book-table">{guestsLine(p.session, p.device)}</div>
         <nav className="book-tools" aria-label="Menu tools">
           <button onClick={() => setContentsOpen(true)}>
             <Icon name="book" size={16} /> Contents
@@ -406,7 +408,7 @@ export function FeedMenu(p: TemplateProps) {
           <header className="feed-hero">
             <img className="feed-logo" src={LOGO} alt="" width={72} height={72} />
             <div className="feed-name">{RESTAURANT_NAME}</div>
-            <div className="feed-table">{guestsLine(p.session)}</div>
+            <div className="feed-table">{guestsLine(p.session, p.device)}</div>
           </header>
           {popular.length > 0 && (
             <section className="feed-row">

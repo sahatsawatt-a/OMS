@@ -35,7 +35,7 @@ export const fetchPaymentConfig = () => api<PaymentConfig>('/payments/config')
  * Some payment methods redirect away and come back with ?payment_intent=…&redirect_status=…
  * Ask the server to confirm those on return, then tidy the URL.
  */
-export function useStripeRedirectReturn(sessionToken: string, onPaid: (order: Order) => void) {
+export function useStripeRedirectReturn(deviceToken: string, onPaid: (order: Order) => void) {
   const handled = useRef(false)
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
@@ -43,7 +43,7 @@ export function useStripeRedirectReturn(sessionToken: string, onPaid: (order: Or
     if (!intentId || handled.current) return
     handled.current = true
     guestActions
-      .confirmIntent(sessionToken, intentId)
+      .confirmIntent(deviceToken, intentId)
       .then((res) => {
         if (res.status === 'succeeded') onPaid(res.order)
       })
@@ -52,5 +52,5 @@ export function useStripeRedirectReturn(sessionToken: string, onPaid: (order: Or
         ;['payment_intent', 'payment_intent_client_secret', 'redirect_status'].forEach((k) => params.delete(k))
         window.history.replaceState(null, '', `${window.location.pathname}?${params}`)
       })
-  }, [sessionToken, onPaid])
+  }, [deviceToken, onPaid])
 }

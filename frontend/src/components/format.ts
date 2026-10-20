@@ -24,5 +24,7 @@ export function formatTime(ts: number): string {
 /** Link encoded in the table QR code: table number (for reference) + session token */
 export function sessionUrl(tableNumber: number, token: string): string {
   const base = import.meta.env.VITE_PUBLIC_BASE_URL || window.location.origin
-  return `${base.replace(/\/$/, '')}/order?table=${tableNumber}&session=${encodeURIComponent(token)}`
+  // The token goes after #: browsers never send that part to a server, a log or another site.
+  // The guest page keeps it in the phone's storage and takes it out of the address (REQ-36).
+  return `${base.replace(/\/$/, '')}/order?table=${tableNumber}#s=${encodeURIComponent(token)}`
 }

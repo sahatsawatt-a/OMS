@@ -113,7 +113,18 @@ class TableOut(Model):
     zone: str
 
 
+class DeviceOut(Model):
+    """A phone at the table (REQ-37)."""
+
+    label: str
+    joined_at: int
+    removed_at: int | None = None
+
+
 class SessionOut(Model):
+    """A table session as staff see it, QR token included."""
+
+    id: int
     token: str
     table_id: str
     table_number: int
@@ -122,6 +133,25 @@ class SessionOut(Model):
     opened_at: int
     closed_at: int | None = None
     waiter_called_at: int | None = None
+    devices: list[DeviceOut] = []
+
+
+class GuestSessionOut(Model):
+    """A table session as a guest's phone sees it: no QR token, no other phones' details."""
+
+    table_number: int
+    guests: int
+    status: Literal["open", "closed"]
+    opened_at: int
+    closed_at: int | None = None
+    waiter_called_at: int | None = None
+
+
+class JoinOut(Model):
+    """A phone that joined a table: its own key and its letter."""
+
+    device_token: str
+    label: str
 
 
 class OpenSessionIn(Model):
@@ -163,7 +193,10 @@ class OrderOut(Model):
     id: str
     # Given once the order is visible to staff (paid, or waiting at the counter)
     number: int | None = None
-    session_token: str
+    # Staff only; guests never see the QR token
+    session_token: str | None = None
+    # The phone that placed it (A, B, ...); empty for orders placed before phones had ids
+    device: str | None = None
     table_number: int
     round: int
     created_at: int
@@ -229,8 +262,9 @@ class StaffState(Model):
 
 
 class GuestState(Model):
-    """What a guest's phone shows for one table session."""
+    """What a guest's phone shows: its table, its own letter, the table's orders, the menu."""
 
-    session: SessionOut
+    session: GuestSessionOut
+    device: str
     orders: list[OrderOut]
     menu: MenuOut
