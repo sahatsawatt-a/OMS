@@ -5,7 +5,7 @@ import { Sheet } from '../../components/shared'
 import { ALLERGEN_LABEL, DIETARY_LABEL } from '../../demo/dietary'
 import { OPTION_GROUPS, RESTAURANT_NAME, SAMPLE_PHOTOS } from '../../demo/mockData'
 import { formatAUD } from '../../demo/money'
-import { actions, newMenuItemId, useDemoState } from '../../demo/store'
+import { actions, newMenuItemId, setAdminKey, useDemoState, useMenuSync } from '../../demo/store'
 import type { Allergen, DietaryTag, MenuCategory, MenuItem } from '../../demo/types'
 import './admin.css'
 
@@ -13,6 +13,8 @@ const ALL = 'all'
 
 export default function AdminPage() {
   const demo = useDemoState()
+  const sync = useMenuSync()
+  const onServer = sync.source === 'server'
   const { categories, items } = demo.menu
   const [selected, setSelected] = useState<string>(ALL)
   const [query, setQuery] = useState('')
@@ -35,6 +37,9 @@ export default function AdminPage() {
     setNotice(text)
     window.setTimeout(() => setNotice(null), 3000)
   }
+
+  // With the backend running, editing the shared menu needs the admin key
+  if (onServer && !sync.adminKey) return <AdminKeyGate error={sync.error} />
 
   return (
     <div className="admin">
@@ -111,6 +116,12 @@ export default function AdminPage() {
             )}
           </div>
 
+          {sync.error && (
+            <p className="editor-error" role="alert">
+              {sync.error}
+            </p>
+          )}
+
           <div className="admin-toolbar">
             <label className="admin-search">
               <Icon name="search" size={17} />
@@ -167,21 +178,36 @@ export default function AdminPage() {
           )}
 
           <footer className="admin-foot">
-            <p className="muted small">
-              Changes appear on the guest menu straight away. In this demo they are saved in this browser only.
-            </p>
-            <button
-              className="btn btn-sm btn-ghost"
-              onClick={() => {
-                if (confirm('Put the sample menu back? Your menu changes will be lost.')) {
-                  actions.resetMenu()
-                  setSelected(ALL)
-                  flash('Sample menu restored')
-                }
-              }}
-            >
-              Reset to sample menu
-            </button>
+            {onServer ? (
+              <>
+                <p className="muted small">
+                  Changes are saved on the server and reach every guest phone within a few seconds.
+                </p>
+                <button className="btn btn-sm btn-ghost" onClick={() => setAdminKey('')}>
+                  Forget admin key
+                </button>
+              </>
+            ) : (
+              <>
+                <p className="muted small">
+                  {sync.source === 'browser'
+                    ? 'The backend is not running, so changes are saved in this browser only.'
+                    : 'Connecting to the backend…'}
+                </p>
+                <button
+                  className="btn btn-sm btn-ghost"
+                  onClick={() => {
+                    if (confirm('Put the sample menu back? Your menu changes will be lost.')) {
+                      actions.resetMenu()
+                      setSelected(ALL)
+                      flash('Sample menu restored')
+                    }
+                  }}
+                >
+                  Reset to sample menu
+                </button>
+              </>
+            )}
           </footer>
         </main>
       </div>
@@ -222,6 +248,50 @@ export default function AdminPage() {
           {notice}
         </div>
       )}
+    </div>
+  )
+}
+
+function AdminKeyGate({ error }: { error: string | null }) {
+  const [key, setKey] = useState('')
+  return (
+    <div className="admin">
+      <header className="topbar">
+        <Link to="/" className="brand">
+          OMS
+        </Link>
+        <span className="topbar-title">Menu admin</span>
+      </header>
+      <form
+        className="admin-gate"
+        onSubmit={(e) => {
+          e.preventDefault()
+          setAdminKey(key.trim())
+        }}
+      >
+        <h1>Menu admin</h1>
+        <p className="muted">
+          The menu is saved on the server. Enter the admin key to edit it (ADMIN_API_KEY in backend/.env).
+        </p>
+        {error && (
+          <p className="editor-error" role="alert">
+            {error}
+          </p>
+        )}
+        <label className="field">
+          <span>Admin key</span>
+          <input
+            type="password"
+            value={key}
+            onChange={(e) => setKey(e.target.value)}
+            autoFocus
+            autoComplete="current-password"
+          />
+        </label>
+        <button className="btn btn-primary btn-block" disabled={!key.trim()}>
+          Continue
+        </button>
+      </form>
     </div>
   )
 }
