@@ -622,8 +622,13 @@
     width: 100%;
     height: auto;
     aspect-ratio: 4 / 3;
+    /* A flex item won't shrink below its content, so a tall photo would stretch the card */
+    min-height: 0;
+    overflow: hidden;
   }
   .menu-grid .menu-photo img {
+    position: absolute;
+    inset: 0;
     border-radius: 0;
   }
   .menu-grid .menu-photo .menu-add {
