@@ -9,9 +9,9 @@ export default defineConfig({
     host: true,
     // Allow access through ngrok tunnels (e.g. for scanning table QR codes from a phone)
     allowedHosts: ['.ngrok-free.dev', '.ngrok-free.app'],
-    // Forward API calls to the FastAPI backend during development
+    // Forward API calls (and the live-updates WebSocket) to the FastAPI backend during development
     proxy: {
-      '/api': process.env.VITE_PROXY_TARGET ?? 'http://localhost:8000',
+      '/api': { target: process.env.VITE_PROXY_TARGET ?? 'http://localhost:8000', ws: true },
     },
   },
 })

@@ -2,14 +2,21 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>◐</text></svg>" />
+    <link rel="icon" type="image/png" href="/brand/ying-thai-2-logo.png" />
     
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="theme-color" content="#f7f6f2" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
-    <title>OMS</title>
+    <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=Great+Vibes&family=Inter:wght@400;500;600;700&family=Noto+Sans+Thai:wght@400;500;600&family=Sarabun:wght@400;500;600;700&display=swap" rel="stylesheet" />
+    <script>
+      // Apply the chosen design before the first paint (see src/components/design.ts)
+      try {
+        var d = new URLSearchParams(location.search).get('design') || localStorage.getItem('oms-design')
+        if (d === 'classic' || d === 'heritage' || d === 'night') document.documentElement.dataset.design = d
+      } catch (e) {}
+    </script>
+    <title>Ying Thai 2 · OMS</title>
   </head>
   <body>
     <div id="root"></div>

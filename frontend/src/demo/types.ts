@@ -1,5 +1,5 @@
-// Domain types for the frontend demo. They mirror the planned backend model
-// (see docs/REQUIREMENTS.md) so the mock store can later be swapped for API calls.
+// Domain types shared by the screens. The backend API (backend/app/schemas.py) returns
+// exactly these shapes: camelCase, money in cents, times in epoch milliseconds.
 
 export type Table = {
   id: string
@@ -26,15 +26,21 @@ export type OptionGroup = {
 export type MenuCategory = {
   id: string
   name: string
+  /** Thai name, as on the printed menu */
+  nameTh?: string
 }
 
-export type DietaryTag = 'vegetarian' | 'vegan' | 'vegetarian-option' | 'halal'
+export type DietaryTag = 'vegetarian' | 'vegan' | 'vegetarian-option' | 'halal' | 'gluten-free' | 'spicy'
 export type Allergen = 'dairy' | 'peanuts' | 'tree-nuts' | 'shellfish' | 'egg'
 
 export type MenuItem = {
   id: string
   categoryId: string
+  /** Dish number on the printed menu */
+  number?: number
   name: string
+  /** Thai name, as on the printed menu */
+  nameTh?: string
   description: string
   /** Price in cents */
   price: number
@@ -51,15 +57,22 @@ export type MenuItem = {
 export type MenuData = {
   categories: MenuCategory[]
   items: MenuItem[]
+  /** Option groups an admin can attach to a dish */
+  optionGroups?: OptionGroup[]
+  soldOut?: string[]
 }
 
 export type SelectedOption = {
+  /** Ids let the server price the option; names and price are what the guest saw */
+  groupId?: string
+  choiceId?: string
   groupName: string
   choiceName: string
   price: number
 }
 
-export type ItemStatus = 'submitted' | 'preparing' | 'ready' | 'served' | 'cancelled'
+/** No kitchen screen for now: paid food is brought to the table and marked served */
+export type ItemStatus = 'submitted' | 'served' | 'cancelled'
 
 export type OrderItem = {
   id: string
@@ -73,16 +86,41 @@ export type OrderItem = {
   status: ItemStatus
 }
 
+export type PaymentMethod = 'stripe' | 'cash' | 'card_terminal'
+
+/**
+ * Pay first: an order goes through only once paid.
+ * awaiting_counter = guest chose "Pay at counter" and staff have not confirmed payment yet;
+ * cancelled = never paid (e.g. guest left), so nothing was made.
+ */
+export type OrderPayment = {
+  status: 'awaiting_counter' | 'paid' | 'cancelled'
+  amount: number
+  method?: PaymentMethod
+  paidAt?: number
+  cancelledAt?: number
+  /** Stripe PaymentIntent id for phone payments */
+  intentId?: string
+}
+
+/** What a guest's phone shows for one table session (GET /api/sessions/{token}) */
+export type GuestState = {
+  session: TableSession
+  orders: Order[]
+  menu: MenuData
+}
+
 export type Order = {
   id: string
+  /** Short number guests show at the counter, unique per day */
+  number: number
   sessionToken: string
   tableNumber: number
   round: number
   createdAt: number
   items: OrderItem[]
+  payment: OrderPayment
 }
-
-export type PaymentMethod = 'stripe' | 'cash' | 'card_terminal'
 
 export type TableSession = {
   token: string
@@ -93,11 +131,11 @@ export type TableSession = {
   openedAt: number
   closedAt?: number
   waiterCalledAt?: number
-  billRequestedAt?: number
-  payment?: { method: PaymentMethod; amount: number; paidAt: number }
 }
 
+/** What the staff screens show (GET /api/staff/state) */
 export type DemoState = {
+  tables: Table[]
   sessions: Record<string, TableSession>
   orders: Order[]
   soldOut: string[]

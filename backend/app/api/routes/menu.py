@@ -1,252 +1,179 @@
-"""Menu API.
+import re
+import secrets
+import unicodedata
 
-GET /api/menu is public (the customer menu). Everything under /api/admin/menu changes the
-menu and needs the X-Admin-Key header until staff login exists (REQ-28).
-
-JSON uses the same camelCase field names as the frontend's MenuItem type
-(frontend/src/demo/types.ts). Dishes and categories are saved by id with PUT (create or
-replace), and the ids come from the admin page, matching how the demo store works.
-"""
-
-import hmac
-from typing import Literal
-
-from fastapi import APIRouter, Depends, Header, HTTPException, Response
-from pydantic import BaseModel, ConfigDict, Field
-from pydantic.alias_generators import to_camel
-from sqlalchemy import func, select
+from fastapi import APIRouter, Depends, HTTPException, Response
+from sqlalchemy import exists, func, select
 from sqlalchemy.orm import Session
 
-from app.core.config import get_settings
+from app.core.security import require_staff
 from app.db.session import get_db
-from app.models import MenuCategory, MenuItem
+from app.models import MenuCategory, MenuItem, MenuPhoto, OptionGroup, OrderItem
+from app.schemas import CategoryIn, CreatedId, FlagIn, MenuItemIn, MenuItemOut, MenuOut, MoveIn
+from app.seed import reset_menu, set_option_groups
+from app.services.photos import store_photo
+from app.services.views import item_out, menu_out
 
-# ---------- Schemas ----------
+router = APIRouter(prefix="/menu", tags=["menu"])
+staff = APIRouter(prefix="/menu", tags=["menu admin"], dependencies=[Depends(require_staff)])
 
-
-class CamelModel(BaseModel):
-    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
-
-
-class OptionChoice(CamelModel):
-    id: str = Field(min_length=1, max_length=64)
-    name: str = Field(min_length=1, max_length=100)
-    price: int = Field(ge=0, description="Extra price in cents")
+ID_PATTERN = r"^[a-z0-9][a-z0-9-]{0,63}$"
 
 
-class OptionGroup(CamelModel):
-    id: str = Field(min_length=1, max_length=64)
-    name: str = Field(min_length=1, max_length=100)
-    type: Literal["single", "multi"]
-    choices: list[OptionChoice] = Field(min_length=1)
+def slug(text: str) -> str:
+    ascii_text = unicodedata.normalize("NFKD", text).encode("ascii", "ignore").decode().lower()
+    return re.sub(r"[^a-z0-9]+", "-", ascii_text).strip("-")[:40]
 
 
-Dietary = Literal["vegetarian", "vegan", "vegetarian-option", "halal"]
-Allergen = Literal["dairy", "peanuts", "tree-nuts", "shellfish", "egg"]
+@router.get("", response_model_exclude_none=True)
+def get_menu(db: Session = Depends(get_db)) -> MenuOut:
+    """The menu guests see: hidden dishes left out. Public, like a printed menu."""
+    return menu_out(db, include_hidden=False)
 
 
-class CategoryOut(CamelModel):
-    id: str
-    name: str
-
-
-class MenuItemIn(CamelModel):
-    """A dish as sent by the admin page (create or edit)."""
-
-    category_id: str
-    name: str = Field(min_length=1, max_length=150)
-    description: str = Field(default="", max_length=2000)
-    price: int = Field(ge=0, le=1_000_000, description="Price in cents, GST included")
-    # URL or uploaded photo as a data: URL; the admin page shrinks photos to ~250 KB
-    image: str | None = Field(default=None, max_length=2_000_000)
-    recommended: bool = False
-    option_groups: list[OptionGroup] = Field(default_factory=list)
-    dietary: list[Dietary] = Field(default_factory=list)
-    allergens: list[Allergen] = Field(default_factory=list)
-    hidden: bool = False
-
-
-class MenuItemOut(MenuItemIn):
-    id: str
-    sold_out: bool
-
-
-class MenuOut(CamelModel):
-    categories: list[CategoryOut]
-    items: list[MenuItemOut]
-
-
-class ItemFlagsIn(CamelModel):
-    """Quick toggles from the admin page; send only the ones that change."""
-
-    hidden: bool | None = None
-    sold_out: bool | None = None
-
-
-class CategoryIn(CamelModel):
-    name: str = Field(min_length=1, max_length=100)
-
-
-class CategoryOrderIn(CamelModel):
-    ids: list[str]
-
-
-# ---------- Helpers ----------
-
-
-def require_admin(x_admin_key: str | None = Header(default=None)) -> None:
-    expected = get_settings().admin_api_key
-    if not expected:
-        raise HTTPException(status_code=503, detail="ADMIN_API_KEY is not configured")
-    if not x_admin_key or not hmac.compare_digest(x_admin_key, expected):
-        raise HTTPException(status_code=401, detail="Invalid admin key")
-
-
-def item_out(item: MenuItem) -> MenuItemOut:
-    return MenuItemOut(
-        id=item.id,
-        category_id=item.category_id,
-        name=item.name,
-        description=item.description,
-        price=item.price_cents,
-        image=item.image,
-        recommended=item.recommended,
-        option_groups=item.option_groups,
-        dietary=item.dietary,
-        allergens=item.allergens,
-        hidden=item.hidden,
-        sold_out=item.sold_out,
+@router.get("/photos/{photo_id}")
+def get_photo(photo_id: str, db: Session = Depends(get_db)) -> Response:
+    """An uploaded dish photo. Its id is a hash of the bytes, so browsers may keep it for good."""
+    photo = db.get(MenuPhoto, photo_id)
+    if photo is None:
+        raise HTTPException(404, "Unknown photo")
+    return Response(
+        photo.data,
+        media_type=photo.content_type,
+        headers={"Cache-Control": "public, max-age=31536000, immutable"},
     )
 
 
-def load_menu(db: Session, include_hidden: bool) -> MenuOut:
-    categories = db.scalars(select(MenuCategory).order_by(MenuCategory.sort_order)).all()
-    query = select(MenuItem).order_by(MenuItem.sort_order)
-    if not include_hidden:
-        query = query.where(MenuItem.hidden.is_(False))
-    return MenuOut(
-        categories=[CategoryOut(id=c.id, name=c.name) for c in categories],
-        items=[item_out(i) for i in db.scalars(query)],
-    )
+@staff.get("/all", response_model_exclude_none=True)
+def get_full_menu(db: Session = Depends(get_db)) -> MenuOut:
+    return menu_out(db, include_hidden=True)
 
 
-def get_item_or_404(db: Session, item_id: str) -> MenuItem:
+def _get_item(db: Session, item_id: str) -> MenuItem:
     item = db.get(MenuItem, item_id)
     if item is None:
-        raise HTTPException(status_code=404, detail="Dish not found")
+        raise HTTPException(404, "Unknown dish")
     return item
 
 
-def get_category_or_404(db: Session, category_id: str) -> MenuCategory:
+@staff.put("/items/{item_id}", response_model_exclude_none=True)
+def save_item(item_id: str, body: MenuItemIn, db: Session = Depends(get_db)) -> MenuItemOut:
+    """Add a dish, or replace the one with this id."""
+    if not re.match(ID_PATTERN, item_id):
+        raise HTTPException(422, "Dish ids are lower-case letters, digits and dashes")
+    if db.get(MenuCategory, body.category_id) is None:
+        raise HTTPException(422, "Unknown category")
+    group_ids = list(dict.fromkeys(g.id for g in body.option_groups))
+    known = set(db.scalars(select(OptionGroup.id).where(OptionGroup.id.in_(group_ids))).all())
+    if missing := [g for g in group_ids if g not in known]:
+        raise HTTPException(422, f"Unknown option groups: {', '.join(missing)}")
+
+    item = db.get(MenuItem, item_id)
+    if item is None:
+        item = MenuItem(
+            id=item_id, sort_order=(db.scalar(select(func.max(MenuItem.sort_order))) or 0) + 1
+        )
+        db.add(item)
+    item.category_id = body.category_id
+    item.name = body.name.strip()
+    item.name_th = (body.name_th or "").strip() or None
+    item.number = body.number
+    item.description = body.description.strip()
+    item.price = body.price
+    item.image = store_photo(db, body.image)
+    item.recommended = bool(body.recommended)
+    item.dietary = list(dict.fromkeys(body.dietary))
+    item.allergens = list(dict.fromkeys(body.allergens))
+    item.hidden = bool(body.hidden)
+    if body.sold_out is not None:
+        item.sold_out = body.sold_out
+    set_option_groups(db, item, group_ids)
+    db.commit()
+    db.refresh(item)
+    return item_out(item)
+
+
+@staff.put("/items/{item_id}/hidden")
+def set_hidden(item_id: str, body: FlagIn, db: Session = Depends(get_db)) -> dict[str, bool]:
+    _get_item(db, item_id).hidden = body.value
+    db.commit()
+    return {"ok": True}
+
+
+@staff.put("/items/{item_id}/sold-out")
+def set_sold_out(item_id: str, body: FlagIn, db: Session = Depends(get_db)) -> dict[str, bool]:
+    _get_item(db, item_id).sold_out = body.value
+    db.commit()
+    return {"ok": True}
+
+
+@staff.delete("/items/{item_id}")
+def delete_item(item_id: str, db: Session = Depends(get_db)) -> dict[str, bool]:
+    """Only dishes that were never ordered; others are hidden instead (orders keep history)."""
+    item = _get_item(db, item_id)
+    if db.scalar(select(exists().where(OrderItem.menu_item_id == item_id))):
+        raise HTTPException(
+            409, "This dish is in past orders, so it can't be deleted. Hide it instead."
+        )
+    db.delete(item)
+    db.commit()
+    return {"ok": True}
+
+
+@staff.post("/categories")
+def add_category(body: CategoryIn, db: Session = Depends(get_db)) -> CreatedId:
+    category_id = f"{slug(body.name) or 'category'}-{secrets.token_hex(2)}"
+    last = db.scalar(select(func.max(MenuCategory.sort_order))) or 0
+    db.add(MenuCategory(id=category_id, name=body.name.strip(), sort_order=last + 1))
+    db.commit()
+    return CreatedId(id=category_id)
+
+
+def _get_category(db: Session, category_id: str) -> MenuCategory:
     category = db.get(MenuCategory, category_id)
     if category is None:
-        raise HTTPException(status_code=404, detail="Category not found")
+        raise HTTPException(404, "Unknown category")
     return category
 
 
-def next_sort_order(db: Session, column) -> int:
-    return (db.scalar(select(func.max(column))) or 0) + 1
-
-
-# ---------- Public ----------
-
-router = APIRouter(tags=["menu"])
-
-
-@router.get("/menu")
-def get_menu(db: Session = Depends(get_db)) -> MenuOut:
-    """The customer menu: every category, and the dishes that aren't hidden."""
-    return load_menu(db, include_hidden=False)
-
-
-# ---------- Admin ----------
-
-admin_router = APIRouter(
-    prefix="/admin/menu", tags=["menu admin"], dependencies=[Depends(require_admin)]
-)
-
-
-@admin_router.get("")
-def get_admin_menu(db: Session = Depends(get_db)) -> MenuOut:
-    """The full menu for the admin page, hidden dishes included."""
-    return load_menu(db, include_hidden=True)
-
-
-@admin_router.put("/items/{item_id}")
-def save_item(item_id: str, data: MenuItemIn, db: Session = Depends(get_db)) -> MenuItemOut:
-    """Create the dish with this id, or replace it if it exists (like saveMenuItem)."""
-    get_category_or_404(db, data.category_id)
-    item = db.get(MenuItem, item_id)
-    if item is None:
-        item = MenuItem(id=item_id, sort_order=next_sort_order(db, MenuItem.sort_order))
-        db.add(item)
-    item.category_id = data.category_id
-    item.name = data.name
-    item.description = data.description
-    item.price_cents = data.price
-    item.image = data.image
-    item.recommended = data.recommended
-    item.option_groups = [g.model_dump() for g in data.option_groups]
-    item.dietary = list(data.dietary)
-    item.allergens = list(data.allergens)
-    item.hidden = data.hidden
+@staff.patch("/categories/{category_id}")
+def rename_category(
+    category_id: str, body: CategoryIn, db: Session = Depends(get_db)
+) -> dict[str, bool]:
+    _get_category(db, category_id).name = body.name.strip()
     db.commit()
-    return item_out(item)
+    return {"ok": True}
 
 
-@admin_router.patch("/items/{item_id}")
-def update_item_flags(
-    item_id: str, data: ItemFlagsIn, db: Session = Depends(get_db)
-) -> MenuItemOut:
-    """Hide/show a dish or mark it sold out."""
-    item = get_item_or_404(db, item_id)
-    if data.hidden is not None:
-        item.hidden = data.hidden
-    if data.sold_out is not None:
-        item.sold_out = data.sold_out
-    db.commit()
-    return item_out(item)
+@staff.post("/categories/{category_id}/move")
+def move_category(category_id: str, body: MoveIn, db: Session = Depends(get_db)) -> dict[str, bool]:
+    ordered = list(db.scalars(select(MenuCategory).order_by(MenuCategory.sort_order)).all())
+    i = next((n for n, c in enumerate(ordered) if c.id == category_id), None)
+    if i is None:
+        raise HTTPException(404, "Unknown category")
+    j = i + body.delta
+    if 0 <= j < len(ordered):
+        ordered[i], ordered[j] = ordered[j], ordered[i]
+        for n, c in enumerate(ordered):
+            c.sort_order = n
+        db.commit()
+    return {"ok": True}
 
 
-@admin_router.delete("/items/{item_id}", status_code=204)
-def delete_item(item_id: str, db: Session = Depends(get_db)) -> Response:
-    # Once orders are stored, refuse here if the dish was ever ordered (hide it instead).
-    db.delete(get_item_or_404(db, item_id))
-    db.commit()
-    return Response(status_code=204)
-
-
-@admin_router.put("/categories/order")
-def reorder_categories(data: CategoryOrderIn, db: Session = Depends(get_db)) -> MenuOut:
-    """Set the category order; send every category id in the new order."""
-    categories = {c.id: c for c in db.scalars(select(MenuCategory))}
-    if sorted(data.ids) != sorted(categories):
-        raise HTTPException(status_code=422, detail="Send every category id exactly once")
-    for position, category_id in enumerate(data.ids):
-        categories[category_id].sort_order = position
-    db.commit()
-    return load_menu(db, include_hidden=True)
-
-
-@admin_router.put("/categories/{category_id}")
-def save_category(category_id: str, data: CategoryIn, db: Session = Depends(get_db)) -> CategoryOut:
-    """Create the category with this id (added at the end), or rename it if it exists."""
-    category = db.get(MenuCategory, category_id)
-    if category is None:
-        category = MenuCategory(
-            id=category_id, sort_order=next_sort_order(db, MenuCategory.sort_order)
-        )
-        db.add(category)
-    category.name = data.name
-    db.commit()
-    return CategoryOut(id=category.id, name=category.name)
-
-
-@admin_router.delete("/categories/{category_id}", status_code=204)
-def delete_category(category_id: str, db: Session = Depends(get_db)) -> Response:
-    category = get_category_or_404(db, category_id)
-    if db.scalar(select(MenuItem.id).where(MenuItem.category_id == category_id).limit(1)):
-        raise HTTPException(status_code=409, detail="Only empty categories can be deleted")
+@staff.delete("/categories/{category_id}")
+def delete_category(category_id: str, db: Session = Depends(get_db)) -> dict[str, bool]:
+    """Only empty categories."""
+    category = _get_category(db, category_id)
+    if db.scalar(select(exists().where(MenuItem.category_id == category_id))):
+        raise HTTPException(409, "Move or delete the dishes in this category first")
     db.delete(category)
     db.commit()
-    return Response(status_code=204)
+    return {"ok": True}
+
+
+@staff.post("/reset")
+def reset(db: Session = Depends(get_db)) -> dict[str, bool]:
+    """Put the sample menu back; sold-out marks are cleared."""
+    reset_menu(db)
+    db.commit()
+    return {"ok": True}

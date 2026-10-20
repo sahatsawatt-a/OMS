@@ -1,29 +1,34 @@
 import { useMemo, useRef, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { Icon } from '../../components/Icon'
 import { Sheet } from '../../components/shared'
 import { ALLERGEN_LABEL, DIETARY_LABEL } from '../../demo/dietary'
-import { OPTION_GROUPS, RESTAURANT_NAME, SAMPLE_PHOTOS } from '../../demo/mockData'
+import { RESTAURANT_NAME } from '../../demo/mockData'
 import { formatAUD } from '../../demo/money'
-import { actions, newMenuItemId, setAdminKey, useDemoState, useMenuSync } from '../../demo/store'
-import type { Allergen, DietaryTag, MenuCategory, MenuItem } from '../../demo/types'
+import { actions, newMenuItemId, useDemoState } from '../../demo/store'
+import type { Allergen, DietaryTag, MenuCategory, MenuItem, OptionGroup } from '../../demo/types'
+import ReportsView from './ReportsView'
 import './admin.css'
 
 const ALL = 'all'
 
 export default function AdminPage() {
   const demo = useDemoState()
-  const sync = useMenuSync()
-  const onServer = sync.source === 'server'
   const { categories, items } = demo.menu
   const [selected, setSelected] = useState<string>(ALL)
   const [query, setQuery] = useState('')
   const [editing, setEditing] = useState<MenuItem | 'new' | null>(null)
   const [categorySheet, setCategorySheet] = useState<MenuCategory | 'new' | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
+  const [params, setParams] = useSearchParams()
+  const tab = params.get('tab') === 'reports' ? 'reports' : 'menu'
 
   const category = categories.find((c) => c.id === selected)
   const ordered = useMemo(() => new Set(demo.orders.flatMap((o) => o.items.map((i) => i.menuItemId))), [demo.orders])
+  const photos = useMemo(
+    () => items.flatMap((m) => (m.image?.startsWith('/menu/') ? [{ name: m.name, url: m.image }] : [])),
+    [items],
+  )
 
   const shown = useMemo(() => {
     const q = query.trim().toLowerCase()
@@ -38,16 +43,13 @@ export default function AdminPage() {
     window.setTimeout(() => setNotice(null), 3000)
   }
 
-  // With the backend running, editing the shared menu needs the admin key
-  if (onServer && !sync.adminKey) return <AdminKeyGate error={sync.error} />
-
   return (
     <div className="admin">
       <header className="topbar">
         <Link to="/" className="brand">
           OMS
         </Link>
-        <span className="topbar-title">Menu admin</span>
+        <span className="topbar-title">Admin</span>
         <nav>
           <Link to="/staff">
             Front of house <Icon name="arrowRight" size={16} />
@@ -55,162 +57,166 @@ export default function AdminPage() {
         </nav>
       </header>
 
-      <div className="admin-body">
-        <aside className="admin-cats" aria-label="Categories">
-          <button className={selected === ALL ? 'active' : ''} onClick={() => setSelected(ALL)}>
-            <span>All dishes</span>
-            <span className="count">{items.length}</span>
-          </button>
-          {categories.map((c) => (
-            <button key={c.id} className={selected === c.id ? 'active' : ''} onClick={() => setSelected(c.id)}>
-              <span>{c.name}</span>
-              <span className="count">{items.filter((m) => m.categoryId === c.id).length}</span>
-            </button>
-          ))}
-          <button className="add-cat" onClick={() => setCategorySheet('new')}>
-            <Icon name="plus" size={16} /> Add category
-          </button>
-        </aside>
+      <nav className="admin-tabs" aria-label="Admin sections">
+        <button className={tab === 'menu' ? 'active' : ''} aria-current={tab === 'menu' ? 'page' : undefined} onClick={() => setParams({})}>
+          Menu
+        </button>
+        <button
+          className={tab === 'reports' ? 'active' : ''}
+          aria-current={tab === 'reports' ? 'page' : undefined}
+          onClick={() => setParams({ tab: 'reports' })}
+        >
+          Reports
+        </button>
+      </nav>
 
-        <main className="admin-main">
+      {tab === 'reports' ? (
+        <div className="admin-reports">
           <div className="admin-head">
             <div>
               <div className="admin-eyebrow">{RESTAURANT_NAME}</div>
-              <h1>{category ? category.name : 'All dishes'}</h1>
+              <h1>Reports</h1>
             </div>
-            {category && (
-              <div className="row gap wrap">
-                <button className="btn btn-sm btn-outline" onClick={() => setCategorySheet(category)}>
-                  <Icon name="pencil" size={15} /> Rename
-                </button>
-                <button
-                  className="btn btn-sm btn-outline icon-only"
-                  aria-label="Move category up"
-                  disabled={categories[0]?.id === category.id}
-                  onClick={() => actions.moveCategory(category.id, -1)}
-                >
-                  <Icon name="chevronUp" size={16} />
-                </button>
-                <button
-                  className="btn btn-sm btn-outline icon-only"
-                  aria-label="Move category down"
-                  disabled={categories[categories.length - 1]?.id === category.id}
-                  onClick={() => actions.moveCategory(category.id, 1)}
-                >
-                  <Icon name="chevronDown" size={16} />
-                </button>
-                <button
-                  className="btn btn-sm btn-outline"
-                  disabled={items.some((m) => m.categoryId === category.id)}
-                  title={items.some((m) => m.categoryId === category.id) ? 'Move or delete its dishes first' : undefined}
-                  onClick={() => {
-                    if (confirm(`Delete the category “${category.name}”?`) && actions.deleteCategory(category.id)) {
-                      setSelected(ALL)
-                      flash('Category deleted')
-                    }
-                  }}
-                >
-                  <Icon name="trash" size={15} /> Delete
-                </button>
-              </div>
-            )}
           </div>
-
-          {sync.error && (
-            <p className="editor-error" role="alert">
-              {sync.error}
-            </p>
-          )}
-
-          <div className="admin-toolbar">
-            <label className="admin-search">
-              <Icon name="search" size={17} />
-              <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Find a dish" aria-label="Find a dish" />
-            </label>
-            <button className="btn btn-primary" onClick={() => setEditing('new')} disabled={categories.length === 0}>
-              <Icon name="plus" size={16} /> Add dish
+          <ReportsView state={demo} />
+        </div>
+      ) : (
+        <div className="admin-body">
+          <aside className="admin-cats" aria-label="Categories">
+            <button className={selected === ALL ? 'active' : ''} onClick={() => setSelected(ALL)}>
+              <span>All dishes</span>
+              <span className="count">{items.length}</span>
             </button>
-          </div>
+            {categories.map((c) => (
+              <button key={c.id} className={selected === c.id ? 'active' : ''} onClick={() => setSelected(c.id)}>
+                <span>{c.name}</span>
+                <span className="count">{items.filter((m) => m.categoryId === c.id).length}</span>
+              </button>
+            ))}
+            <button className="add-cat" onClick={() => setCategorySheet('new')}>
+              <Icon name="plus" size={16} /> Add category
+            </button>
+          </aside>
 
-          {shown.length === 0 ? (
-            <p className="admin-empty">{query ? 'No dishes match.' : 'No dishes in this category yet.'}</p>
-          ) : (
-            <ul className="admin-list">
-              {shown.map((m) => {
-                const out = demo.soldOut.includes(m.id)
-                return (
-                  <li key={m.id} className={`admin-row ${m.hidden ? 'is-hidden' : ''}`}>
-                    <button className="admin-row-main" onClick={() => setEditing(m)}>
-                      {m.image ? <img src={m.image} alt="" loading="lazy" /> : <span className="no-photo"><Icon name="image" size={18} /></span>}
-                      <span className="admin-row-text">
-                        <span className="admin-row-name">
-                          {m.name}
-                          {m.recommended && <span className="tag">Popular</span>}
-                        </span>
-                        <span className="admin-row-meta">
-                          {selected === ALL && <>{categories.find((c) => c.id === m.categoryId)?.name ?? 'No category'} · </>}
-                          {m.description || 'No description'}
-                        </span>
-                      </span>
-                      <span className="admin-row-price">{formatAUD(m.price)}</span>
-                    </button>
-                    <div className="admin-row-actions">
-                      {m.hidden ? (
-                        <span className="state state-hidden">Hidden</span>
-                      ) : (
-                        <button
-                          className={`state-toggle ${out ? 'is-out' : ''}`}
-                          onClick={() => actions.toggleSoldOut(m.id)}
-                          aria-pressed={out}
-                          title={out ? 'Mark as available' : 'Mark as sold out'}
-                        >
-                          {out ? 'Sold out' : 'Available'}
-                        </button>
-                      )}
-                      <button className="icon-btn" aria-label={`Edit ${m.name}`} onClick={() => setEditing(m)}>
-                        <Icon name="pencil" size={16} />
-                      </button>
-                    </div>
-                  </li>
-                )
-              })}
-            </ul>
-          )}
+          <main className="admin-main">
+            <div className="admin-head">
+              <div>
+                <div className="admin-eyebrow">{RESTAURANT_NAME}</div>
+                <h1>{category ? category.name : 'All dishes'}</h1>
+              </div>
+              {category && (
+                <div className="row gap wrap">
+                  <button className="btn btn-sm btn-outline" onClick={() => setCategorySheet(category)}>
+                    <Icon name="pencil" size={15} /> Rename
+                  </button>
+                  <button
+                    className="btn btn-sm btn-outline icon-only"
+                    aria-label="Move category up"
+                    disabled={categories[0]?.id === category.id}
+                    onClick={() => actions.moveCategory(category.id, -1)}
+                  >
+                    <Icon name="chevronUp" size={16} />
+                  </button>
+                  <button
+                    className="btn btn-sm btn-outline icon-only"
+                    aria-label="Move category down"
+                    disabled={categories[categories.length - 1]?.id === category.id}
+                    onClick={() => actions.moveCategory(category.id, 1)}
+                  >
+                    <Icon name="chevronDown" size={16} />
+                  </button>
+                  <button
+                    className="btn btn-sm btn-outline"
+                    disabled={items.some((m) => m.categoryId === category.id)}
+                    title={items.some((m) => m.categoryId === category.id) ? 'Move or delete its dishes first' : undefined}
+                    onClick={async () => {
+                      if (confirm(`Delete the category “${category.name}”?`) && (await actions.deleteCategory(category.id))) {
+                        setSelected(ALL)
+                        flash('Category deleted')
+                      }
+                    }}
+                  >
+                    <Icon name="trash" size={15} /> Delete
+                  </button>
+                </div>
+              )}
+            </div>
 
-          <footer className="admin-foot">
-            {onServer ? (
-              <>
-                <p className="muted small">
-                  Changes are saved on the server and reach every guest phone within a few seconds.
-                </p>
-                <button className="btn btn-sm btn-ghost" onClick={() => setAdminKey('')}>
-                  Forget admin key
-                </button>
-              </>
+            <div className="admin-toolbar">
+              <label className="admin-search">
+                <Icon name="search" size={17} />
+                <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Find a dish" aria-label="Find a dish" />
+              </label>
+              <button className="btn btn-primary" onClick={() => setEditing('new')} disabled={categories.length === 0}>
+                <Icon name="plus" size={16} /> Add dish
+              </button>
+            </div>
+
+            {shown.length === 0 ? (
+              <p className="admin-empty">{query ? 'No dishes match.' : 'No dishes in this category yet.'}</p>
             ) : (
-              <>
-                <p className="muted small">
-                  {sync.source === 'browser'
-                    ? 'The backend is not running, so changes are saved in this browser only.'
-                    : 'Connecting to the backend…'}
-                </p>
-                <button
-                  className="btn btn-sm btn-ghost"
-                  onClick={() => {
-                    if (confirm('Put the sample menu back? Your menu changes will be lost.')) {
-                      actions.resetMenu()
-                      setSelected(ALL)
-                      flash('Sample menu restored')
-                    }
-                  }}
-                >
-                  Reset to sample menu
-                </button>
-              </>
+              <ul className="admin-list">
+                {shown.map((m) => {
+                  const out = demo.soldOut.includes(m.id)
+                  return (
+                    <li key={m.id} className={`admin-row ${m.hidden ? 'is-hidden' : ''}`}>
+                      <button className="admin-row-main" onClick={() => setEditing(m)}>
+                        {m.image ? <img src={m.image} alt="" loading="lazy" /> : <span className="no-photo"><Icon name="image" size={18} /></span>}
+                        <span className="admin-row-text">
+                          <span className="admin-row-name">
+                            {m.name}
+                            {m.recommended && <span className="tag">Popular</span>}
+                          </span>
+                          <span className="admin-row-meta">
+                            {selected === ALL && <>{categories.find((c) => c.id === m.categoryId)?.name ?? 'No category'} · </>}
+                            {m.description || 'No description'}
+                          </span>
+                        </span>
+                        <span className="admin-row-price">{formatAUD(m.price)}</span>
+                      </button>
+                      <div className="admin-row-actions">
+                        {m.hidden ? (
+                          <span className="state state-hidden">Hidden</span>
+                        ) : (
+                          <button
+                            className={`state-toggle ${out ? 'is-out' : ''}`}
+                            onClick={() => actions.toggleSoldOut(m.id)}
+                            aria-pressed={out}
+                            title={out ? 'Mark as available' : 'Mark as sold out'}
+                          >
+                            {out ? 'Sold out' : 'Available'}
+                          </button>
+                        )}
+                        <button className="icon-btn" aria-label={`Edit ${m.name}`} onClick={() => setEditing(m)}>
+                          <Icon name="pencil" size={16} />
+                        </button>
+                      </div>
+                    </li>
+                  )
+                })}
+              </ul>
             )}
-          </footer>
-        </main>
-      </div>
+
+            <footer className="admin-foot">
+              <p className="muted small">
+                Changes are saved to the server and appear on every guest's menu within a few seconds.
+              </p>
+              <button
+                className="btn btn-sm btn-ghost"
+                onClick={async () => {
+                  if (confirm('Put the sample menu back? Your menu changes will be lost.')) {
+                    await actions.resetMenu()
+                    setSelected(ALL)
+                    flash('Sample menu restored')
+                  }
+                }}
+              >
+                Reset to sample menu
+              </button>
+            </footer>
+          </main>
+        </div>
+      )}
 
       {editing && (
         <ItemEditor
@@ -219,6 +225,8 @@ export default function AdminPage() {
           defaultCategory={selected === ALL ? categories[0]?.id : selected}
           soldOut={editing !== 'new' && demo.soldOut.includes(editing.id)}
           wasOrdered={editing !== 'new' && ordered.has(editing.id)}
+          optionGroups={demo.menu.optionGroups ?? []}
+          photos={photos}
           onClose={() => setEditing(null)}
           onSaved={(name, isNew) => {
             setEditing(null)
@@ -235,9 +243,11 @@ export default function AdminPage() {
         <CategorySheet
           category={categorySheet === 'new' ? undefined : categorySheet}
           onClose={() => setCategorySheet(null)}
-          onSave={(name) => {
-            if (categorySheet === 'new') setSelected(actions.addCategory(name))
-            else actions.renameCategory(categorySheet.id, name)
+          onSave={async (name) => {
+            if (categorySheet === 'new') {
+              const id = await actions.addCategory(name)
+              if (id) setSelected(id)
+            } else await actions.renameCategory(categorySheet.id, name)
             setCategorySheet(null)
           }}
         />
@@ -248,50 +258,6 @@ export default function AdminPage() {
           {notice}
         </div>
       )}
-    </div>
-  )
-}
-
-function AdminKeyGate({ error }: { error: string | null }) {
-  const [key, setKey] = useState('')
-  return (
-    <div className="admin">
-      <header className="topbar">
-        <Link to="/" className="brand">
-          OMS
-        </Link>
-        <span className="topbar-title">Menu admin</span>
-      </header>
-      <form
-        className="admin-gate"
-        onSubmit={(e) => {
-          e.preventDefault()
-          setAdminKey(key.trim())
-        }}
-      >
-        <h1>Menu admin</h1>
-        <p className="muted">
-          The menu is saved on the server. Enter the admin key to edit it (ADMIN_API_KEY in backend/.env).
-        </p>
-        {error && (
-          <p className="editor-error" role="alert">
-            {error}
-          </p>
-        )}
-        <label className="field">
-          <span>Admin key</span>
-          <input
-            type="password"
-            value={key}
-            onChange={(e) => setKey(e.target.value)}
-            autoFocus
-            autoComplete="current-password"
-          />
-        </label>
-        <button className="btn btn-primary btn-block" disabled={!key.trim()}>
-          Continue
-        </button>
-      </form>
     </div>
   )
 }
@@ -317,10 +283,10 @@ function CategorySheet({ category, onClose, onSave }: { category?: MenuCategory;
   )
 }
 
-const DIETARY: DietaryTag[] = ['vegetarian', 'vegan', 'vegetarian-option', 'halal']
+const DIETARY: DietaryTag[] = ['gluten-free', 'spicy', 'vegetarian', 'vegan', 'vegetarian-option', 'halal']
 const ALLERGENS: Allergen[] = ['dairy', 'peanuts', 'tree-nuts', 'shellfish', 'egg']
 
-/** Read a photo file and shrink it to a JPEG data URL small enough to keep in browser storage */
+/** Read a photo file and shrink it to a small JPEG data URL, stored with the dish on the server */
 function resizePhoto(file: File, maxSide = 800): Promise<string> {
   return new Promise((resolve, reject) => {
     const url = URL.createObjectURL(file)
@@ -348,6 +314,8 @@ function ItemEditor({
   defaultCategory,
   soldOut,
   wasOrdered,
+  optionGroups,
+  photos,
   onClose,
   onSaved,
   onDeleted,
@@ -357,11 +325,16 @@ function ItemEditor({
   defaultCategory?: string
   soldOut: boolean
   wasOrdered: boolean
+  optionGroups: OptionGroup[]
+  /** The restaurant's own dish photos, to reuse on another dish */
+  photos: { name: string; url: string }[]
   onClose: () => void
   onSaved: (name: string, isNew: boolean) => void
   onDeleted: (name: string) => void
 }) {
   const [name, setName] = useState(item?.name ?? '')
+  const [nameTh, setNameTh] = useState(item?.nameTh ?? '')
+  const [number, setNumber] = useState(item?.number ? String(item.number) : '')
   const [categoryId, setCategoryId] = useState(item?.categoryId ?? defaultCategory ?? '')
   const [price, setPrice] = useState(item ? (item.price / 100).toFixed(2).replace(/\.00$/, '') : '')
   const [description, setDescription] = useState(item?.description ?? '')
@@ -374,6 +347,7 @@ function ItemEditor({
   const [hidden, setHidden] = useState(!!item?.hidden)
   const [showSamples, setShowSamples] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [saving, setSaving] = useState(false)
   const fileInput = useRef<HTMLInputElement>(null)
 
   const cents = Math.round(parseFloat(price.replace(/[^0-9.]/g, '')) * 100)
@@ -385,7 +359,7 @@ function ItemEditor({
 
   const toggle = <T,>(list: T[], value: T) => (list.includes(value) ? list.filter((v) => v !== value) : [...list, value])
 
-  const save = () => {
+  const save = async () => {
     if (problems.length) {
       setError(problems.join(' '))
       return
@@ -393,21 +367,25 @@ function ItemEditor({
     const next: MenuItem = {
       id: item?.id ?? newMenuItemId(name),
       categoryId,
+      number: /^\d+$/.test(number.trim()) ? Number(number.trim()) : undefined,
       name: name.trim(),
+      nameTh: nameTh.trim() || undefined,
       description: description.trim(),
       price: cents,
       image: image || undefined,
       recommended: recommended || undefined,
-      optionGroups: OPTION_GROUPS.filter((g) => groups.includes(g.id)),
+      optionGroups: optionGroups.filter((g) => groups.includes(g.id)),
       dietary: DIETARY.filter((d) => dietary.includes(d)),
       allergens: ALLERGENS.filter((a) => allergens.includes(a)),
       hidden: hidden || undefined,
     }
-    if (!actions.saveMenuItem(next)) {
-      setError('This browser could not save the change. Its storage is full; try a smaller photo or remove some uploaded photos.')
+    setSaving(true)
+    const saved = await actions.saveMenuItem(next, out)
+    setSaving(false)
+    if (!saved) {
+      setError('The change was not saved. Check the message at the top of the page and try again.')
       return
     }
-    if (out !== soldOut) actions.toggleSoldOut(next.id)
     onSaved(next.name, !item)
   }
 
@@ -430,13 +408,13 @@ function ItemEditor({
           {item && (
             <button
               className="btn btn-ghost danger"
-              onClick={() => {
+              onClick={async () => {
                 if (wasOrdered) {
                   setHidden(true)
                   setError('This dish is in past orders, so it can’t be deleted. It is set to hidden instead; press Save to keep that.')
                   return
                 }
-                if (confirm(`Delete “${item.name}”? This can’t be undone.`) && actions.deleteMenuItem(item.id)) onDeleted(item.name)
+                if (confirm(`Delete “${item.name}”? This can’t be undone.`) && (await actions.deleteMenuItem(item.id))) onDeleted(item.name)
               }}
             >
               <Icon name="trash" size={16} /> Delete
@@ -446,8 +424,8 @@ function ItemEditor({
           <button className="btn btn-outline" onClick={onClose}>
             Cancel
           </button>
-          <button className="btn btn-primary" onClick={save}>
-            {item ? 'Save' : 'Add dish'}
+          <button className="btn btn-primary" disabled={saving} onClick={save}>
+            {saving ? 'Saving…' : item ? 'Save' : 'Add dish'}
           </button>
         </div>
       }
@@ -460,7 +438,7 @@ function ItemEditor({
               <Icon name="upload" size={15} /> Upload photo
             </button>
             <button className="btn btn-sm btn-outline" onClick={() => setShowSamples((s) => !s)}>
-              <Icon name="image" size={15} /> Sample photos
+              <Icon name="image" size={15} /> Menu photos
             </button>
             {image && (
               <button className="btn btn-sm btn-ghost" onClick={() => setImage('')}>
@@ -480,7 +458,7 @@ function ItemEditor({
           />
           {showSamples && (
             <div className="sample-grid" role="listbox" aria-label="Sample photos">
-              {SAMPLE_PHOTOS.map((p) => (
+              {photos.map((p) => (
                 <button
                   key={p.url}
                   className={image === p.url ? 'active' : ''}
@@ -500,8 +478,18 @@ function ItemEditor({
 
         <label className="field">
           <span>Name</span>
-          <input value={name} onChange={(e) => setName(e.target.value)} maxLength={60} placeholder="e.g. Larb gai" />
+          <input value={name} onChange={(e) => setName(e.target.value)} maxLength={80} placeholder="e.g. Larb gai" />
         </label>
+        <div className="editor-two">
+          <label className="field">
+            <span>Thai name</span>
+            <input value={nameTh} onChange={(e) => setNameTh(e.target.value)} maxLength={80} lang="th" placeholder="e.g. ลาบไก่" />
+          </label>
+          <label className="field">
+            <span>Number on the printed menu</span>
+            <input value={number} onChange={(e) => setNumber(e.target.value)} inputMode="numeric" maxLength={4} placeholder="e.g. 27" />
+          </label>
+        </div>
         <div className="editor-two">
           <label className="field">
             <span>Category</span>
@@ -565,7 +553,7 @@ function ItemEditor({
 
         <fieldset className="editor-group">
           <legend>Choices for guests</legend>
-          {OPTION_GROUPS.map((g) => (
+          {optionGroups.map((g) => (
             <label key={g.id} className="check">
               <input type="checkbox" checked={groups.includes(g.id)} onChange={() => setGroups((l) => toggle(l, g.id))} />
               <span>
