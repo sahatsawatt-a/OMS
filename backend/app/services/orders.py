@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 
 from app.core.clock import business_day, utcnow
 from app.core.config import get_settings
-from app.models import MenuItem, Order, OrderItem, TableSession
+from app.models import MenuItem, Order, OrderItem, TableDevice, TableSession
 from app.schemas import OrderLineIn
 
 log = logging.getLogger(__name__)
@@ -25,6 +25,8 @@ NEXT_STATUS: dict[str, set[str]] = {
 
 # Stripe's minimum charge for AUD is $0.50
 MIN_STRIPE_AMOUNT = 50
+# Unpaid "pay at counter" orders a table may have at once, so nobody can flood the staff screen
+MAX_WAITING_AT_COUNTER = 2
 
 
 def token() -> str:
@@ -92,10 +94,10 @@ def price_lines(db: Session, lines: list[OrderLineIn]) -> tuple[list[OrderItem],
     return items, sum(i.unit_price * i.quantity for i in items)
 
 
-def lock_open_session(db: Session, session_token: str) -> TableSession:
-    """The guest's key: an open session. Locked so orders on one table are numbered in turn."""
+def lock_open_session(db: Session, session_id: int) -> TableSession:
+    """The guest's table, which must be open. Locked so orders on one table are numbered in turn."""
     s = db.scalars(
-        select(TableSession).where(TableSession.token == session_token).with_for_update()
+        select(TableSession).where(TableSession.id == session_id).with_for_update()
     ).first()
     if s is None:
         raise HTTPException(404, "Unknown table session")
@@ -136,12 +138,25 @@ class Checkout:
     simulated: bool = False
 
 
-def place_order(db: Session, session_token: str, lines: list[OrderLineIn], pay: str) -> Checkout:
-    session = lock_open_session(db, session_token)
+def place_order(db: Session, device: TableDevice, lines: list[OrderLineIn], pay: str) -> Checkout:
+    session = lock_open_session(db, device.session_id)
+    if pay == "counter":
+        waiting = db.scalar(
+            select(func.count(Order.id)).where(
+                Order.session_id == session.id, Order.payment_status == "awaiting_counter"
+            )
+        )
+        if (waiting or 0) >= MAX_WAITING_AT_COUNTER:
+            raise HTTPException(
+                409,
+                f"This table already has {MAX_WAITING_AT_COUNTER} orders waiting for payment at "
+                "the counter. Please pay for those first, or pay on your phone.",
+            )
     items, amount = price_lines(db, lines)
     now = utcnow()
     order = Order(
         session_id=session.id,
+        device_id=device.id,
         table_number=session.table.number,
         round=0,
         created_at=now,
@@ -177,7 +192,9 @@ def place_order(db: Session, session_token: str, lines: list[OrderLineIn], pay: 
             metadata={
                 "order_id": str(order.id),
                 "table_number": str(order.table_number),
-                "session_token": session.token,
+                # Never the QR token: it is the table's key
+                "session_id": str(session.id),
+                "device": device.label,
             },
             idempotency_key=f"oms-order-{order.id}",
         )

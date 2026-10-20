@@ -4,8 +4,9 @@ STAFF_ENDPOINTS = [
     ("get", "/api/staff/state"),
     ("get", "/api/menu/all"),
     ("post", "/api/tables/t1/sessions"),
-    ("post", "/api/sessions/abc/close"),
-    ("delete", "/api/sessions/abc/waiter"),
+    ("post", "/api/sessions/1/close"),
+    ("delete", "/api/sessions/1/waiter"),
+    ("delete", "/api/sessions/1/devices/A"),
     ("post", "/api/orders/1/counter-payment"),
     ("post", "/api/orders/1/cancel"),
     ("post", "/api/orders/1/served"),
@@ -44,13 +45,22 @@ def test_menu_is_public_without_hidden_dishes(client, staff):
     assert set(menu["soldOut"]) == {"coconut-juice", "poo-pud-num-prik-pow"}
 
 
-def test_unknown_session_token_gets_404(client):
-    assert client.get("/api/sessions/not-a-real-token").status_code == 404
+def test_unknown_tokens_are_refused(client):
+    assert client.post("/api/guest/join", headers={"X-Session-Token": "nope"}).status_code == 404
+    assert client.post("/api/guest/join").status_code == 401
+    assert client.get("/api/guest/state").status_code == 401
+    assert client.get("/api/guest/state", headers={"X-Device-Token": "nope"}).status_code == 401
     res = client.post(
-        "/api/sessions/not-a-real-token/orders",
+        "/api/guest/orders",
+        headers={"X-Device-Token": "nope"},
         json={"lines": [{"menuItemId": "gai-tod", "quantity": 1}], "pay": "counter"},
     )
-    assert res.status_code == 404
+    assert res.status_code == 401
+
+
+def test_qr_token_is_not_a_device_token(client, seated):
+    headers = {"X-Device-Token": seated["token"]}
+    assert client.get("/api/guest/state", headers=headers).status_code == 401
 
 
 def test_browser_check_key_also_works_and_can_be_revoked(client, settings):

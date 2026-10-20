@@ -139,7 +139,7 @@ Priority: **H** first release, **N** normal, **L** later.
 | --------------- | ------------------------------------ | -------------------------------------------------------------- |
 | Home            | `/`                                  | Entry point; with the staff key: seated-table links, reset sample data |
 | Front of house  | `/staff`                             | Table grid, Needs attention queue, seat guests → QR, table detail, counter payments, serve, clear |
-| Customer menu   | `/order?table=N&session=TOKEN`       | The real menu in the chosen template, options, cart, pay on phone (Stripe test mode) or at the counter, orders, call waiter |
+| Customer menu   | `/order?table=N#s=TOKEN`             | The real menu in the chosen template, options, cart, pay on phone (Stripe test mode) or at the counter, orders, call waiter |
 | Menu admin      | `/admin`                             | Dishes (Thai name, number, price, photo, labels, options), sold out, hidden, sections |
 | Reports         | `/admin?tab=reports`                 | Sales, Busiest times, GST / BAS                                 |
 

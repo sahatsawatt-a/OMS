@@ -64,7 +64,42 @@ def staff(client):
 
 @pytest.fixture
 def seated(staff):
-    """Table 3 seated; returns the session token."""
+    """Table 3 seated; returns the session as staff see it (id, QR token, ...)."""
     res = staff.post("/api/tables/t3/sessions", json={"guests": 4})
     assert res.status_code == 200
-    return res.json()["token"]
+    return res.json()
+
+
+class Phone:
+    """A guest's phone: joined a table with the QR token, then sends its own device token."""
+
+    def __init__(self, client, session_token, device_token=None):
+        headers = {"X-Session-Token": session_token}
+        if device_token:
+            headers["X-Device-Token"] = device_token
+        res = client.post("/api/guest/join", headers=headers)
+        assert res.status_code == 200, res.text
+        self.client = client
+        self.token = res.json()["deviceToken"]
+        self.label = res.json()["label"]
+
+    def _headers(self, kwargs):
+        return {**kwargs.pop("headers", {}), "X-Device-Token": self.token}
+
+    def get(self, path, **kwargs):
+        return self.client.get(path, headers=self._headers(kwargs), **kwargs)
+
+    def post(self, path, **kwargs):
+        return self.client.post(path, headers=self._headers(kwargs), **kwargs)
+
+    def state(self):
+        return self.get("/api/guest/state").json()
+
+    def order(self, lines, pay="counter"):
+        return self.post("/api/guest/orders", json={"lines": lines, "pay": pay})
+
+
+@pytest.fixture
+def phone(client, seated):
+    """The first phone at table 3 (A)."""
+    return Phone(client, seated["token"])

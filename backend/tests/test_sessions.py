@@ -10,41 +10,38 @@ def test_a_table_has_one_open_session(staff):
     assert a["token"] == b["token"]
 
 
-def test_guest_sees_session_and_menu(client, seated):
-    state = client.get(f"/api/sessions/{seated}").json()
+def test_guest_sees_session_and_menu(phone):
+    state = phone.state()
     assert state["session"]["tableNumber"] == 3
+    assert state["device"] == "A"
     assert len(state["menu"]["items"]) == 93
     assert state["orders"] == []
+    # The phone never gets the table's QR token back
+    assert "token" not in state["session"]
 
 
-def test_closed_session_cannot_order_or_call_waiter(staff, seated):
-    assert staff.post(f"/api/sessions/{seated}/close").status_code == 200
-    state = staff.get(f"/api/sessions/{seated}").json()
-    assert state["session"]["status"] == "closed"
-    res = staff.post(
-        f"/api/sessions/{seated}/orders",
-        json={"lines": [{"menuItemId": "gai-tod", "quantity": 1}], "pay": "counter"},
-    )
+def test_closed_session_cannot_order_or_call_waiter(staff, seated, phone):
+    assert staff.post(f"/api/sessions/{seated['id']}/close").status_code == 200
+    assert phone.state()["session"]["status"] == "closed"
+    res = phone.order([{"menuItemId": "gai-tod", "quantity": 1}])
     assert res.status_code == 410
-    assert staff.post(f"/api/sessions/{seated}/waiter").status_code == 410
+    assert phone.post("/api/guest/waiter").status_code == 410
     # The table can be seated again with a new token
     again = staff.post("/api/tables/t3/sessions", json={"guests": 2}).json()
-    assert again["token"] != seated
+    assert again["token"] != seated["token"]
 
 
-def test_waiter_call_and_acknowledge(staff, seated):
-    staff.post(f"/api/sessions/{seated}/waiter")
-    assert staff.get("/api/staff/state").json()["sessions"][seated]["waiterCalledAt"] > 0
-    staff.delete(f"/api/sessions/{seated}/waiter")
-    assert "waiterCalledAt" not in staff.get("/api/staff/state").json()["sessions"][seated]
+def test_waiter_call_and_acknowledge(staff, seated, phone):
+    phone.post("/api/guest/waiter")
+    token = seated["token"]
+    assert staff.get("/api/staff/state").json()["sessions"][token]["waiterCalledAt"] > 0
+    staff.delete(f"/api/sessions/{seated['id']}/waiter")
+    assert "waiterCalledAt" not in staff.get("/api/staff/state").json()["sessions"][token]
 
 
-def test_cannot_clear_table_with_unpaid_counter_order(staff, seated):
-    staff.post(
-        f"/api/sessions/{seated}/orders",
-        json={"lines": [{"menuItemId": "gai-tod", "quantity": 1}], "pay": "counter"},
-    )
-    res = staff.post(f"/api/sessions/{seated}/close")
+def test_cannot_clear_table_with_unpaid_counter_order(staff, seated, phone):
+    phone.order([{"menuItemId": "gai-tod", "quantity": 1}])
+    res = staff.post(f"/api/sessions/{seated['id']}/close")
     assert res.status_code == 409
 
 

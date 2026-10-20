@@ -125,7 +125,7 @@ function generateDay(dayStart: number, r: () => number, until: number, out: Hist
             : { status: 'paid', method: payMethod(r), amount, paidAt: round.at + MIN },
         })
       })
-      out.sessions.push({ token, tableId: table.id, tableNumber: table.number, guests, status: 'closed', openedAt, closedAt })
+      out.sessions.push({ id: 0, token, tableId: table.id, tableNumber: table.number, guests, status: 'closed', openedAt, closedAt })
     }
   })
 }

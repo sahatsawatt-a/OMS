@@ -13,8 +13,9 @@ from fastapi import WebSocket
 from sqlalchemy import event
 from sqlalchemy.orm import Session
 
-# Commits this close together send one message
-COALESCE_SECONDS = 0.05
+# Commits this close together send one message, so at most ~3 a second however busy the
+# restaurant (or however fast someone spams an endpoint) gets
+COALESCE_SECONDS = 0.3
 
 CHANGED = json.dumps({"type": "changed"})
 

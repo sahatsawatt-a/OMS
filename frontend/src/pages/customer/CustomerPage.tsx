@@ -12,23 +12,53 @@ import { BookMenu, FeedMenu } from './templates'
 import { useDesign } from '../../components/design'
 import { useStripeRedirectReturn } from './stripe'
 import { guestActions, randomToken, useGuestState, useRefreshOnFocus } from '../../demo/store'
-import type { CartLine, MenuData, MenuItem, Order, SelectedOption, TableSession as Session } from '../../demo/types'
+import type { CartLine, GuestSession as Session, MenuData, MenuItem, Order, SelectedOption } from '../../demo/types'
+import { forgetDevice, useGuestAccess } from '../../lib/guest'
 import './customer.css'
+
+const SCAN_AGAIN = 'Scan the QR code on your table again'
 
 export default function CustomerPage() {
   const [params] = useSearchParams()
-  const token = params.get('session') ?? ''
-  if (!token) return <SessionMessage title="Scan the QR code on your table" text="Ask our staff for a QR code to start ordering." />
-  return <TableSession token={token} />
+  const table = params.get('table') ?? ''
+  const [access, retry] = useGuestAccess(table)
+
+  if (access.status === 'joining') return <SessionMessage title="Joining your table…" text="" />
+  if (access.status === 'missing') {
+    return <SessionMessage title={SCAN_AGAIN} text="Each phone joins the table by scanning its QR code. Ask our staff if you can't find it." />
+  }
+  if (access.status === 'failed') {
+    if (access.code === 0) {
+      return (
+        <SessionMessage title="Can’t reach the restaurant" text="Check your connection and try again.">
+          <button className="btn btn-primary" onClick={retry}>
+            Try again
+          </button>
+        </SessionMessage>
+      )
+    }
+    if (access.code === 410) return <SessionMessage title="This table’s visit has ended" text="Please ask our staff if you'd like to order again." />
+    if (access.code === 403) return <SessionMessage title="This phone was removed from the table" text="Please ask our staff if this is a mistake." />
+    return <SessionMessage title="This QR code is not valid" text="Please ask our staff for your table's QR code." />
+  }
+  return <TableSession key={access.deviceToken} table={table} deviceToken={access.deviceToken} />
 }
 
-/** Loads the table session from the server; the token in the QR code is the guest's key */
-function TableSession({ token }: { token: string }) {
-  const { state, missing, error } = useGuestState(token)
-  useRefreshOnFocus(token)
+/** Loads this phone's table from the server, using the phone's own device token */
+function TableSession({ table, deviceToken }: { table: string; deviceToken: string }) {
+  const { state, missing, removed, error } = useGuestState(deviceToken)
+  useRefreshOnFocus(deviceToken)
+
+  useEffect(() => {
+    // The server no longer knows this phone: drop it so the next scan starts fresh
+    if (missing) forgetDevice(table)
+  }, [missing, table])
 
   if (missing) {
-    return <SessionMessage title="This QR code is not valid" text="Please ask our staff for your table's QR code." />
+    return <SessionMessage title={SCAN_AGAIN} text="This phone isn't joined to a table any more." />
+  }
+  if (removed) {
+    return <SessionMessage title="This phone was removed from the table" text="Please ask our staff if this is a mistake." />
   }
   if (!state) {
     return <SessionMessage title={error ? 'Can’t reach the restaurant' : 'Loading your table…'} text={error ? 'Check your connection; we’ll keep trying.' : ''} />
@@ -41,7 +71,16 @@ function TableSession({ token }: { token: string }) {
       />
     )
   }
-  return <OrderingApp session={state.session} orders={state.orders} soldOut={state.menu.soldOut ?? []} menu={state.menu} />
+  return (
+    <OrderingApp
+      session={state.session}
+      device={state.device}
+      deviceToken={deviceToken}
+      orders={state.orders}
+      soldOut={state.menu.soldOut ?? []}
+      menu={state.menu}
+    />
+  )
 }
 
 function SessionMessage({ title, text, children }: { title: string; text: string; children?: React.ReactNode }) {
@@ -81,8 +120,14 @@ function useCart(token: string) {
   return [lines, setLines] as const
 }
 
-function OrderingApp({ session, orders, soldOut, menu }: { session: Session; orders: Order[]; soldOut: string[]; menu: MenuData }) {
+type OrderingProps = { session: Session; device: string; deviceToken: string; orders: Order[]; soldOut: string[]; menu: MenuData }
+
+function OrderingApp({ session, device, deviceToken, orders: tableOrders, soldOut, menu }: OrderingProps) {
   const [tab, setTab] = useState<'menu' | 'orders'>('menu')
+  // Each phone orders its own dishes (REQ-37): its own orders first, the whole table on request
+  const [scope, setScope] = useState<Scope>('mine')
+  const mine = useMemo(() => tableOrders.filter((o) => o.device === device), [tableOrders, device])
+  const orders = scope === 'mine' ? mine : tableOrders
   const design = useDesign()
   // Only dishes the admin has not hidden, in categories that have some
   const items = useMemo(() => menu.items.filter((m) => !m.hidden), [menu.items])
@@ -98,11 +143,11 @@ function OrderingApp({ session, orders, soldOut, menu }: { session: Session; ord
   const searching = query.trim().length > 0
   const results = useMemo(() => searchMenu(query, items, categories), [query, items, categories])
   const [toast, setToast] = useState<string | null>(null)
-  const [cart, setCart] = useCart(session.token)
+  const [cart, setCart] = useCart(deviceToken)
   // iPad landscape and desktop: cart / visit summary stay visible in a side column
   const wide = useMediaQuery('(min-width: 1024px)')
 
-  const activeOrders = orders.filter((o) => o.payment.status !== 'cancelled').length
+  const activeOrders = mine.filter((o) => o.payment.status !== 'cancelled').length
   const cartCount = cart.reduce((n, l) => n + l.quantity, 0)
   const cartTotal = cart.reduce((n, l) => n + l.unitPrice * l.quantity, 0)
 
@@ -129,6 +174,7 @@ function OrderingApp({ session, orders, soldOut, menu }: { session: Session; ord
   const placed = (order: Order) => {
     setPayOpen(false)
     setCart([])
+    setScope('mine')
     setTab('orders')
     setToast(
       order.payment.status === 'paid'
@@ -138,7 +184,7 @@ function OrderingApp({ session, orders, soldOut, menu }: { session: Session; ord
   }
 
   // Returning from a redirect-based Stripe payment method
-  useStripeRedirectReturn(session.token, placed)
+  useStripeRedirectReturn(deviceToken, placed)
 
   const scrollTo = (id: string) => {
     setCategory(id)
@@ -170,7 +216,7 @@ function OrderingApp({ session, orders, soldOut, menu }: { session: Session; ord
 
   const callWaiter = () => {
     guestActions
-      .callWaiter(session.token)
+      .callWaiter(deviceToken)
       .then(() => setToast('A waiter is on the way'))
       .catch((e: Error) => setToast(e.message))
   }
@@ -190,7 +236,7 @@ function OrderingApp({ session, orders, soldOut, menu }: { session: Session; ord
         />
       )}
       {cartOpen && <CartSheet lines={cart} setLines={setCart} onClose={() => setCartOpen(false)} onCheckout={checkout} />}
-      {payOpen && <PaySheet lines={cart} sessionToken={session.token} onClose={() => setPayOpen(false)} onPlaced={placed} />}
+      {payOpen && <PaySheet lines={cart} deviceToken={deviceToken} onClose={() => setPayOpen(false)} onPlaced={placed} />}
       {toast && <div className="toast">{toast}</div>}
     </>
   )
@@ -203,6 +249,7 @@ function OrderingApp({ session, orders, soldOut, menu }: { session: Session; ord
         <DemoBanner />
         <Template
           session={session}
+          device={device}
           items={items}
           categories={categories}
           soldOut={soldOut}
@@ -217,7 +264,7 @@ function OrderingApp({ session, orders, soldOut, menu }: { session: Session; ord
           onPick={setPicking}
           onOpenCart={() => setCartOpen(true)}
           onCallWaiter={callWaiter}
-          ordersView={<OrdersView orders={orders}>{orders.length > 0 && <VisitSummary orders={orders} />}</OrdersView>}
+          ordersView={<OrdersView orders={orders} scope={scope} setScope={setScope} me={device} tableCount={tableOrders.length}>{orders.length > 0 && <VisitSummary orders={orders} scope={scope} />}</OrdersView>}
         />
         {overlays}
       </div>
@@ -232,7 +279,7 @@ function OrderingApp({ session, orders, soldOut, menu }: { session: Session; ord
         <div className="c-header-text">
           <div className="c-restaurant">{RESTAURANT_NAME}</div>
           <div className="c-table">
-            Table {session.tableNumber} · {session.guests} {session.guests === 1 ? 'guest' : 'guests'}
+            Table {session.tableNumber} · Phone {device}
           </div>
         </div>
         <button
@@ -321,7 +368,7 @@ function OrderingApp({ session, orders, soldOut, menu }: { session: Session; ord
               </main>
             </>
           ) : (
-            <OrdersView orders={orders}>{!wide && orders.length > 0 && <VisitSummary orders={orders} />}</OrdersView>
+            <OrdersView orders={orders} scope={scope} setScope={setScope} me={device} tableCount={tableOrders.length}>{!wide && orders.length > 0 && <VisitSummary orders={orders} scope={scope} />}</OrdersView>
           )}
         </div>
 
@@ -348,7 +395,7 @@ function OrderingApp({ session, orders, soldOut, menu }: { session: Session; ord
                     {cartCount} {cartCount === 1 ? 'item' : 'items'} in your cart, not ordered yet. <span>Back to checkout</span>
                   </button>
                 )}
-                {orders.length > 0 && <VisitSummary orders={orders} />}
+                {orders.length > 0 && <VisitSummary orders={orders} scope={scope} />}
               </>
             )}
           </aside>
@@ -601,20 +648,49 @@ function CartSheet({
 
 const PAY_LABEL: Record<string, string> = { stripe: 'Paid on phone', card_terminal: 'Paid by card', cash: 'Paid in cash' }
 
-function OrdersView({ orders, children }: { orders: Order[]; children?: React.ReactNode }) {
+type Scope = 'mine' | 'table'
+
+type OrdersViewProps = {
+  orders: Order[]
+  scope: Scope
+  setScope: (s: Scope) => void
+  /** This phone's letter */
+  me: string
+  /** Orders at the whole table, for the switch */
+  tableCount: number
+  children?: React.ReactNode
+}
+
+function OrdersView({ orders, scope, setScope, me, tableCount, children }: OrdersViewProps) {
   const now = useNow()
-  const waiting = orders.filter((o) => o.payment.status === 'awaiting_counter')
+  // Only this phone pays for its own counter orders
+  const waiting = orders.filter((o) => o.payment.status === 'awaiting_counter' && o.device === me)
+
+  const scopeSwitch = (
+    <div className="c-scope" role="tablist" aria-label="Whose orders">
+      <button role="tab" aria-selected={scope === 'mine'} className={scope === 'mine' ? 'active' : ''} onClick={() => setScope('mine')}>
+        My orders
+      </button>
+      <button role="tab" aria-selected={scope === 'table'} className={scope === 'table' ? 'active' : ''} onClick={() => setScope('table')}>
+        Whole table {tableCount > 0 && <span className="pill">{tableCount}</span>}
+      </button>
+    </div>
+  )
 
   if (orders.length === 0) {
     return (
       <main className="c-orders">
-        <p className="empty">Nothing ordered yet. Pick something from the menu!</p>
+        {scopeSwitch}
+        <p className="empty">
+          {scope === 'mine' ? 'Nothing ordered from this phone yet. Pick something from the menu!' : 'Nothing ordered at this table yet.'}
+        </p>
       </main>
     )
   }
 
   return (
     <main className="c-orders">
+      {scopeSwitch}
       {waiting.map((o) => (
         <section key={o.id} className="card pay-at-counter" role="status">
           <div className="pay-at-counter-label">Pay at the counter</div>
@@ -626,7 +702,10 @@ function OrdersView({ orders, children }: { orders: Order[]; children?: React.Re
       {[...orders].reverse().map((o) => (
         <section key={o.id} className={`card ${o.payment.status === 'cancelled' ? 'is-cancelled' : ''}`}>
           <div className="row between">
-            <strong>Order #{o.number}</strong>
+            <strong>
+              Order #{o.number}
+              {o.device && <span className={`phone-tag ${o.device === me ? 'is-me' : ''}`}>{o.device === me ? 'You' : `Phone ${o.device}`}</span>}
+            </strong>
             <span className="muted small">
               {formatTime(o.createdAt)} · {formatElapsed(o.createdAt, now)}
             </span>
@@ -658,14 +737,14 @@ function OrdersView({ orders, children }: { orders: Order[]; children?: React.Re
   )
 }
 
-/** What this table has paid so far; with pay first there is no bill at the end */
-function VisitSummary({ orders }: { orders: Order[] }) {
+/** What this phone (or the whole table) has paid so far; with pay first there is no bill at the end */
+function VisitSummary({ orders, scope }: { orders: Order[]; scope: Scope }) {
   const paid = orders.filter((o) => o.payment.status === 'paid')
   const total = paid.reduce((n, o) => n + o.payment.amount, 0)
   const waiting = orders.filter((o) => o.payment.status === 'awaiting_counter')
   return (
     <section className="card bill">
-      <h3>This visit</h3>
+      <h3>{scope === 'mine' ? 'Your visit' : 'This table'}</h3>
       <div className="row between">
         <span>Paid orders</span>
         <span>{paid.length}</span>

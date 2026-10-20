@@ -103,18 +103,33 @@ export type OrderPayment = {
   intentId?: string
 }
 
-/** What a guest's phone shows for one table session (GET /api/sessions/{token}) */
+/** What a guest's phone shows (GET /api/guest/state): its table, its own letter, the table's orders */
 export type GuestState = {
-  session: TableSession
+  session: GuestSession
+  /** This phone's letter at the table: A, B, C... (REQ-37) */
+  device: string
   orders: Order[]
   menu: MenuData
+}
+
+/** The table as a guest's phone sees it: no QR token */
+export type GuestSession = {
+  tableNumber: number
+  guests: number
+  status: 'open' | 'closed'
+  openedAt: number
+  closedAt?: number
+  waiterCalledAt?: number
 }
 
 export type Order = {
   id: string
   /** Short number guests show at the counter, unique per day */
   number: number
-  sessionToken: string
+  /** Staff only: guests never see the table's QR token */
+  sessionToken?: string
+  /** The phone that placed it (A, B, ...); missing for orders from before phones had letters */
+  device?: string
   tableNumber: number
   round: number
   createdAt: number
@@ -122,7 +137,18 @@ export type Order = {
   payment: OrderPayment
 }
 
+/** A phone that joined a table (REQ-37) */
+export type TableDevice = {
+  label: string
+  joinedAt: number
+  /** Staff removed it; its token no longer works */
+  removedAt?: number
+}
+
+/** A table session as staff see it, QR token included */
 export type TableSession = {
+  /** Staff actions address the session by id, so the QR token never appears in a URL */
+  id: number
   token: string
   tableId: string
   tableNumber: number
@@ -131,6 +157,7 @@ export type TableSession = {
   openedAt: number
   closedAt?: number
   waiterCalledAt?: number
+  devices?: TableDevice[]
 }
 
 /** What the staff screens show (GET /api/staff/state) */

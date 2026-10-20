@@ -9,7 +9,8 @@ import { fetchPaymentConfig, getStripe, stripeAppearance, type PaymentConfig } f
 
 type Props = {
   lines: CartLine[]
-  sessionToken: string
+  /** This phone's device token (lib/guest.ts) */
+  deviceToken: string
   onClose: () => void
   /** The order went through: paid on the phone, or waiting for payment at the counter */
   onPlaced: (order: Order) => void
@@ -22,7 +23,7 @@ type Checkout = { order: Order; payment: StripeCheckout }
  * On the phone with Stripe (or a simulated card when the server has no Stripe keys), or at the counter.
  * The server prices the order; the total shown here is the cart's, which matches unless the menu changed.
  */
-export default function PaySheet({ lines, sessionToken, onClose, onPlaced }: Props) {
+export default function PaySheet({ lines, deviceToken, onClose, onPlaced }: Props) {
   const amount = lines.reduce((n, l) => n + l.unitPrice * l.quantity, 0)
   const [method, setMethod] = useState<'phone' | 'counter'>('phone')
   const [config, setConfig] = useState<PaymentConfig | 'unavailable' | null>(null)
@@ -40,7 +41,7 @@ export default function PaySheet({ lines, sessionToken, onClose, onPlaced }: Pro
   /** Create the order (once) for paying on the phone */
   const startCheckout = async (): Promise<Checkout> => {
     if (!checkout.current) {
-      const res = await guestActions.placeOrder(sessionToken, lines, 'stripe')
+      const res = await guestActions.placeOrder(deviceToken, lines, 'stripe')
       checkout.current = { order: res.order, payment: res.payment! }
     }
     return checkout.current
@@ -48,7 +49,7 @@ export default function PaySheet({ lines, sessionToken, onClose, onPlaced }: Pro
 
   /** After the card went through: the server checks with Stripe before the order is placed */
   const confirm = async (orderId: string) => {
-    const res = await guestActions.confirmPayment(sessionToken, orderId)
+    const res = await guestActions.confirmPayment(deviceToken, orderId)
     if (res.status === 'succeeded') {
       checkout.current = null
       onPlaced(res.order)
@@ -59,7 +60,7 @@ export default function PaySheet({ lines, sessionToken, onClose, onPlaced }: Pro
 
   const close = () => {
     // Left without paying: drop the unpaid order
-    if (checkout.current) void guestActions.abandon(sessionToken, checkout.current.order.id)
+    if (checkout.current) void guestActions.abandon(deviceToken, checkout.current.order.id)
     onClose()
   }
 
@@ -67,7 +68,7 @@ export default function PaySheet({ lines, sessionToken, onClose, onPlaced }: Pro
     setPlacing(true)
     setError(null)
     try {
-      const res = await guestActions.placeOrder(sessionToken, lines, 'counter')
+      const res = await guestActions.placeOrder(deviceToken, lines, 'counter')
       onPlaced(res.order)
     } catch (e) {
       setError((e as Error).message)

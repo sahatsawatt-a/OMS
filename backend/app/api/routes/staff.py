@@ -88,27 +88,43 @@ def seat_guests(table_id: str, body: OpenSessionIn, db: Session = Depends(get_db
     return session_out(session)
 
 
-def _session(db: Session, session_token: str) -> TableSession:
+# Sessions are addressed by id, not by the QR token, so the token never appears in a URL or log
+def _session(db: Session, session_id: int) -> TableSession:
     s = db.scalars(
-        select(TableSession).where(TableSession.token == session_token).with_for_update()
+        select(TableSession).where(TableSession.id == session_id).with_for_update()
     ).first()
     if s is None:
         raise HTTPException(404, "Unknown table session")
     return s
 
 
-@router.post("/sessions/{session_token}/close")
-def clear_table(session_token: str, db: Session = Depends(get_db)) -> dict[str, bool]:
-    """Guests have left: the QR stops working. Refused while a counter order is unpaid."""
-    close_session(db, _session(db, session_token))
+@router.post("/sessions/{session_id}/close")
+def clear_table(session_id: int, db: Session = Depends(get_db)) -> dict[str, bool]:
+    """Guests have left: the QR and every phone stop working. Refused while a counter order is
+    unpaid."""
+    close_session(db, _session(db, session_id))
     db.commit()
     return {"ok": True}
 
 
-@router.delete("/sessions/{session_token}/waiter")
-def acknowledge_waiter(session_token: str, db: Session = Depends(get_db)) -> dict[str, bool]:
-    _session(db, session_token).waiter_called_at = None
+@router.delete("/sessions/{session_id}/waiter")
+def acknowledge_waiter(session_id: int, db: Session = Depends(get_db)) -> dict[str, bool]:
+    _session(db, session_id).waiter_called_at = None
     db.commit()
+    return {"ok": True}
+
+
+@router.delete("/sessions/{session_id}/devices/{label}")
+def remove_device(session_id: int, label: str, db: Session = Depends(get_db)) -> dict[str, bool]:
+    """A phone that shouldn't be at this table (e.g. someone with a photo of the QR code): its
+    token stops working at once. Its paid orders stay."""
+    session = _session(db, session_id)
+    device = next((d for d in session.devices if d.label == label), None)
+    if device is None:
+        raise HTTPException(404, "Unknown phone")
+    if device.removed_at is None:
+        device.removed_at = utcnow()
+        db.commit()
     return {"ok": True}
 
 

@@ -1,6 +1,6 @@
 // Client-side store backed by the OMS API.
 // Staff screens load GET /api/staff/state (needs the staff key); a guest's phone loads
-// GET /api/sessions/{token} (the QR token is the guest's key). They load again whenever the
+// GET /api/guest/state with its own device token (lib/guest.ts). They load again whenever the
 // server says something changed (lib/live.ts), so every device sees the same tables and orders
 // straight away. Actions call the API and refresh.
 import { useEffect, useSyncExternalStore } from 'react'
@@ -171,40 +171,53 @@ const put = <T = { ok: boolean },>(path: string, json: unknown) => api<T>(path, 
 type GuestEntry = ReturnType<typeof polled<GuestState>> & { snapshot: GuestState | null }
 const guests = new Map<string, GuestEntry>()
 
-function guestEntry(token: string): GuestEntry {
-  let entry = guests.get(token)
+// Guest calls send this phone's device token in a header, never in the URL (REQ-36)
+const asDevice = (deviceToken: string) => ({ 'X-Device-Token': deviceToken })
+
+function guestEntry(deviceToken: string): GuestEntry {
+  let entry = guests.get(deviceToken)
   if (!entry) {
     const e = polled(async () => {
-      const s = await api<GuestState>(`/sessions/${encodeURIComponent(token)}`)
+      const s = await api<GuestState>('/guest/state', { headers: asDevice(deviceToken) })
       e.snapshot = s
       return s
     }) as GuestEntry
     e.snapshot = null
-    guests.set(token, e)
+    guests.set(deviceToken, e)
     entry = e
   }
   return entry
 }
 
-/** A guest's table session; `missing` when the token is unknown */
-export function useGuestState(token: string): { state: GuestState | null; missing: boolean; error: ApiError | null } {
-  const entry = guestEntry(token)
+/**
+ * A guest phone's table. `missing`: the server doesn't know this phone (e.g. scan the QR again);
+ * `removed`: staff removed it from the table.
+ */
+export function useGuestState(deviceToken: string): {
+  state: GuestState | null
+  missing: boolean
+  removed: boolean
+  error: ApiError | null
+} {
+  const entry = guestEntry(deviceToken)
   const state = useSyncExternalStore(entry.subscribe, () => entry.snapshot)
   const error = useSyncExternalStore(entry.subscribe, () => entry.error)
-  return { state, missing: error?.status === 404, error: error?.status === 404 ? null : error }
+  const missing = error?.status === 401
+  const removed = error?.status === 403
+  return { state, missing, removed, error: missing || removed ? null : error }
 }
 
-export function refreshGuest(token: string) {
-  return guestEntry(token).refresh()
+export function refreshGuest(deviceToken: string) {
+  return guestEntry(deviceToken).refresh()
 }
 
 /** Keep a guest's view fresh right away after something changed on the phone */
-export function useRefreshOnFocus(token: string) {
+export function useRefreshOnFocus(deviceToken: string) {
   useEffect(() => {
-    const onFocus = () => void refreshGuest(token)
+    const onFocus = () => void refreshGuest(deviceToken)
     window.addEventListener('focus', onFocus)
     return () => window.removeEventListener('focus', onFocus)
-  }, [token])
+  }, [deviceToken])
 }
 
 // ---- Rules shared with the backend (backend/app/services/orders.py) ----
@@ -235,45 +248,46 @@ const toLines = (lines: CartLine[]) =>
 
 export const guestActions = {
   /** Pay first. "counter": the order waits for staff. "stripe": the reply carries the payment to take. */
-  async placeOrder(token: string, lines: CartLine[], pay: 'stripe' | 'counter') {
-    const res = await api<{ order: Order; payment?: StripeCheckout }>(`/sessions/${encodeURIComponent(token)}/orders`, {
+  async placeOrder(deviceToken: string, lines: CartLine[], pay: 'stripe' | 'counter') {
+    const res = await api<{ order: Order; payment?: StripeCheckout }>('/guest/orders', {
       method: 'POST',
+      headers: asDevice(deviceToken),
       json: { lines: toLines(lines), pay },
     })
-    if (pay === 'counter') void refreshGuest(token)
+    if (pay === 'counter') void refreshGuest(deviceToken)
     return res
   },
 
   /** Ask the server (which asks Stripe) whether the order is paid */
-  async confirmPayment(token: string, orderId: string) {
-    const res = await api<{ status: string; order: Order }>(
-      `/sessions/${encodeURIComponent(token)}/orders/${encodeURIComponent(orderId)}/confirm-payment`,
-      { method: 'POST' },
-    )
-    void refreshGuest(token)
+  async confirmPayment(deviceToken: string, orderId: string) {
+    const res = await api<{ status: string; order: Order }>(`/guest/orders/${encodeURIComponent(orderId)}/confirm-payment`, {
+      method: 'POST',
+      headers: asDevice(deviceToken),
+    })
+    void refreshGuest(deviceToken)
     return res
   },
 
   /** Same, for guests coming back from a redirect-based payment method */
-  async confirmIntent(token: string, intentId: string) {
-    const res = await api<{ status: string; order: Order }>(
-      `/sessions/${encodeURIComponent(token)}/payments/${encodeURIComponent(intentId)}/confirm`,
-      { method: 'POST' },
-    )
-    void refreshGuest(token)
+  async confirmIntent(deviceToken: string, intentId: string) {
+    const res = await api<{ status: string; order: Order }>(`/guest/payments/${encodeURIComponent(intentId)}/confirm`, {
+      method: 'POST',
+      headers: asDevice(deviceToken),
+    })
+    void refreshGuest(deviceToken)
     return res
   },
 
   /** The guest left checkout without paying */
-  abandon(token: string, orderId: string) {
-    return api(`/sessions/${encodeURIComponent(token)}/orders/${encodeURIComponent(orderId)}/abandon`, { method: 'POST' }).catch(
+  abandon(deviceToken: string, orderId: string) {
+    return api(`/guest/orders/${encodeURIComponent(orderId)}/abandon`, { method: 'POST', headers: asDevice(deviceToken) }).catch(
       () => undefined,
     )
   },
 
-  async callWaiter(token: string) {
-    await api(`/sessions/${encodeURIComponent(token)}/waiter`, { method: 'POST' })
-    void refreshGuest(token)
+  async callWaiter(deviceToken: string) {
+    await api('/guest/waiter', { method: 'POST', headers: asDevice(deviceToken) })
+    void refreshGuest(deviceToken)
   },
 }
 
@@ -300,17 +314,22 @@ export const actions = {
     return run(() => post(`/orders/${orderId}/served`))
   },
 
-  /** Guests have left: the QR stops working. The server refuses while an order is unpaid. */
-  async clearTable(sessionToken: string): Promise<boolean> {
-    return (await run(() => post(`/sessions/${encodeURIComponent(sessionToken)}/close`))) !== null
+  /** Guests have left: the QR and every phone stop working. Refused while an order is unpaid. */
+  async clearTable(sessionId: number): Promise<boolean> {
+    return (await run(() => post(`/sessions/${sessionId}/close`))) !== null
+  },
+
+  /** A phone that shouldn't be at the table (e.g. a photo of the QR code): it stops working */
+  removeDevice(sessionId: number, label: string) {
+    return run(() => api(`/sessions/${sessionId}/devices/${encodeURIComponent(label)}`, { method: 'DELETE', staff: true }))
   },
 
   setItemStatus(orderId: string, itemId: string, to: ItemStatus) {
     return run(() => put(`/orders/${orderId}/items/${itemId}/status`, { status: to }))
   },
 
-  acknowledgeWaiter(sessionToken: string) {
-    return run(() => api(`/sessions/${encodeURIComponent(sessionToken)}/waiter`, { method: 'DELETE', staff: true }))
+  acknowledgeWaiter(sessionId: number) {
+    return run(() => api(`/sessions/${sessionId}/waiter`, { method: 'DELETE', staff: true }))
   },
 
   setSoldOut(menuItemId: string, value: boolean) {

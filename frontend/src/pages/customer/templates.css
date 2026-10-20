@@ -25,6 +25,11 @@
   font-size: 0.98rem;
   box-shadow: var(--shadow);
 }
+/* The photo feed sits its bar above the tab bar (below); the book has none, so the very bottom */
+.book-cartbar {
+  bottom: 0;
+  background: linear-gradient(to top, var(--bg) 65%, color-mix(in srgb, var(--bg) 0%, transparent));
+}
 
 /* The printed menu's round marks */
 .marks {

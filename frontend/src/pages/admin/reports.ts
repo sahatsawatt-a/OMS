@@ -122,7 +122,7 @@ export function salesReport({ orders, state }: Data, range: Range, compare: Rang
   const revenue = sum(paid, (o) => o.payment.amount)
   const prevRevenue = sum(prevPaid, (o) => o.payment.amount)
 
-  const waitingOrders = state.orders.filter((o) => o.payment.status === 'awaiting_counter' && state.sessions[o.sessionToken]?.status === 'open')
+  const waitingOrders = state.orders.filter((o) => o.payment.status === 'awaiting_counter' && !!o.sessionToken && state.sessions[o.sessionToken]?.status === 'open')
   const cancelledOrders = orders.filter(
     (o) => o.payment.status === 'cancelled' && o.payment.cancelledAt! >= range.start && o.payment.cancelledAt! < range.end,
   )

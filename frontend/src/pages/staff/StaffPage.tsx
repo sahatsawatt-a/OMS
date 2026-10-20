@@ -46,11 +46,11 @@ export default function StaffPage() {
   )
 
   const waiterCalls = views.flatMap((v) =>
-    v.session?.waiterCalledAt ? [{ token: v.session.token, table: v.table.number, at: v.session.waiterCalledAt }] : [],
+    v.session?.waiterCalledAt ? [{ id: v.session.id, table: v.table.number, at: v.session.waiterCalledAt }] : [],
   )
   // Orders where the guest chose "Pay at counter" and is waiting to pay
   const counterPayments = demo.orders
-    .filter((o) => o.payment.status === 'awaiting_counter' && demo.sessions[o.sessionToken]?.status === 'open')
+    .filter((o) => o.payment.status === 'awaiting_counter' && !!o.sessionToken && demo.sessions[o.sessionToken]?.status === 'open')
     .sort((a, b) => a.createdAt - b.createdAt)
 
   const selectedView = views.find((v) => v.session?.token === selected)
@@ -67,7 +67,8 @@ export default function StaffPage() {
         <div key={o.id} className="alert alert-pay">
           <Icon name="cash" />
           <span className="grow">
-            <strong>Order #{o.number}</strong> · Table {o.tableNumber} · {formatAUD(o.payment.amount)} to pay at the counter ·{' '}
+            <strong>Order #{o.number}</strong> · Table {o.tableNumber}
+            {o.device && ` · Phone ${o.device}`} · {formatAUD(o.payment.amount)} to pay at the counter ·{' '}
             {formatElapsed(o.createdAt, now)}
           </span>
           <div className="row gap">
@@ -81,12 +82,12 @@ export default function StaffPage() {
         </div>
       ))}
       {waiterCalls.map((a) => (
-        <div key={a.token} className="alert alert-waiter">
+        <div key={a.id} className="alert alert-waiter">
           <Icon name="bell" />
           <span className="grow">
             <strong>Table {a.table}</strong> is calling a waiter · {formatElapsed(a.at, now)}
           </span>
-          <button className="btn btn-sm" onClick={() => actions.acknowledgeWaiter(a.token)}>
+          <button className="btn btn-sm" onClick={() => actions.acknowledgeWaiter(a.id)}>
             Got it
           </button>
         </div>
@@ -132,8 +133,10 @@ export default function StaffPage() {
                 </div>
                 {v.session ? (
                   <div className="table-bottom">
-                    <span>
-                      {v.session.guests} guests · {formatElapsed(v.session.openedAt, now).replace(' ago', '')}
+                    <span className={tooManyPhones(v.session) ? 'phones-over' : ''}>
+                      {v.session.guests} guests ·{' '}
+                      {activePhones(v.session).length > 0 && `${activePhones(v.session).length} ${activePhones(v.session).length === 1 ? 'phone' : 'phones'} · `}
+                      {formatElapsed(v.session.openedAt, now).replace(' ago', '')}
                     </span>
                     {v.orders.length ? <strong>{formatAUD(paid)} paid</strong> : <span>No orders yet</span>}
                   </div>
@@ -315,6 +318,8 @@ function TableDetail({
         </a>
       </div>
 
+      <PhonesAtTable session={session} />
+
       <div className="detail-orders">
         {view.orders.length === 0 && <p className="muted">No orders yet.</p>}
         {[...view.orders].reverse().map((o) => {
@@ -322,7 +327,10 @@ function TableDetail({
           return (
             <section key={o.id} className={`card order-card pay-${o.payment.status}`}>
               <div className="row between">
-                <strong>Order #{o.number}</strong>
+                <strong>
+                  Order #{o.number}
+                  {o.device && <span className="order-phone">Phone {o.device}</span>}
+                </strong>
                 <span className="muted small">{formatTime(o.createdAt)}</span>
               </div>
               <div className={`order-pay-line pay-${o.payment.status}`}>
@@ -399,7 +407,7 @@ function TableDetail({
           disabled={unpaid}
           title={unpaid ? 'An order is still waiting for payment' : undefined}
           onClick={async () => {
-            if (confirm(`Clear table ${session.tableNumber}? Its QR code will stop working.`) && (await actions.clearTable(session.token))) onClose()
+            if (confirm(`Clear table ${session.tableNumber}? Its QR code will stop working.`) && (await actions.clearTable(session.id))) onClose()
           }}
         >
           Clear table (guests have left)
@@ -407,5 +415,49 @@ function TableDetail({
         {unpaid && <p className="muted small clear-note">Take or cancel the counter payment before clearing the table.</p>}
       </footer>
     </aside>
+  )
+}
+
+// ---- Phones at a table (REQ-37) ----
+
+const activePhones = (s: TableSession) => (s.devices ?? []).filter((d) => !d.removedAt)
+/** More phones than guests: maybe someone with a photo of the QR code */
+const tooManyPhones = (s: TableSession) => activePhones(s).length > s.guests
+
+function PhonesAtTable({ session }: { session: TableSession }) {
+  const phones = activePhones(session)
+  return (
+    <section className={`card phones ${tooManyPhones(session) ? 'phones-over' : ''}`}>
+      <div className="row between">
+        <strong>Phones</strong>
+        <span className="muted small">
+          {phones.length} {phones.length === 1 ? 'phone' : 'phones'} · {session.guests} guests
+        </span>
+      </div>
+      {tooManyPhones(session) && (
+        <p className="small phones-warning">More phones than guests. If you don&apos;t recognise one, remove it.</p>
+      )}
+      {phones.length === 0 ? (
+        <p className="muted small">No phone has scanned the QR code yet.</p>
+      ) : (
+        <ul className="phone-list">
+          {phones.map((d) => (
+            <li key={d.label}>
+              <span className="phone-chip">{d.label}</span>
+              <span className="muted small grow">joined {formatTime(d.joinedAt)}</span>
+              <button
+                className="btn btn-ghost btn-sm"
+                onClick={() => {
+                  if (confirm(`Remove phone ${d.label} from table ${session.tableNumber}? It stops working at once; its paid orders stay.`))
+                    actions.removeDevice(session.id, d.label)
+                }}
+              >
+                Remove
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
   )
 }
