@@ -1,6 +1,6 @@
 // Generated sample trading history so the admin reports have something to show.
 // Computed on the fly (never stored) and repeatable: the same day always yields the same history.
-import type { MenuItem, Order, OrderItem, PaymentMethod, SelectedOption, Table, TableSession } from './types'
+import type { CardBrand, MenuItem, Order, OrderItem, PaymentMethod, SelectedOption, Table, TableSession } from './types'
 
 const MIN = 60 * 1000
 
@@ -71,9 +71,25 @@ function item(menu: MenuItem, quantity: number, r: () => number): OrderItem {
 
 export type History = { sessions: TableSession[]; orders: Order[] }
 
+function paidWith(method: PaymentMethod, orderId: string, amount: number, paidAt: number): Order['payment'] {
+  return { status: 'paid', method, cardBrand: method === 'cash' ? undefined : sampleCardBrand(orderId), amount, paidAt }
+}
+
 function payMethod(r: () => number): PaymentMethod {
   const m = r()
   return m < 0.55 ? 'stripe' : m < 0.9 ? 'card_terminal' : 'cash'
+}
+
+/**
+ * A sample card type for a card payment, roughly the Australian mix (Visa about half, then
+ * Mastercard, eftpos and Amex). Taken from a hash of the order id rather than the random
+ * sequence, so adding it left every other sample figure unchanged.
+ */
+function sampleCardBrand(orderId: string): CardBrand {
+  let h = 2166136261
+  for (let i = 0; i < orderId.length; i++) h = Math.imul(h ^ orderId.charCodeAt(i), 16777619)
+  const x = (h >>> 0) / 4294967296
+  return x < 0.5 ? 'visa' : x < 0.78 ? 'mastercard' : x < 0.9 ? 'eftpos' : x < 0.97 ? 'amex' : 'other'
 }
 
 function generateDay(dayStart: number, r: () => number, until: number, out: History, menu: Courses, tables: Table[]) {
@@ -86,7 +102,9 @@ function generateDay(dayStart: number, r: () => number, until: number, out: Hist
     { from: 11.5, to: 14.5, count: Math.round((8 + r() * 6) * busy * season) },
     { from: 17.5, to: 21.5, count: Math.round((13 + r() * 8) * busy * season) },
   ]
-  let number = 101
+  // Order numbers restart at 101 each day. Today's live demo orders also start at 101, so today's
+  // sample orders start at 601 to keep every order number in the Payments list unique.
+  let number = until - dayStart < 24 * 60 * MIN ? 601 : 101
   services.forEach((service, si) => {
     for (let i = 0; i < service.count; i++) {
       const table = tables[Math.floor(r() * tables.length)]
@@ -108,12 +126,13 @@ function generateDay(dayStart: number, r: () => number, until: number, out: Hist
       }
 
       rounds.forEach((round, ri) => {
+        const id = `${token}-o${ri}`
         const amount = round.items.filter((x) => x.status !== 'cancelled').reduce((n, x) => n + x.unitPrice * x.quantity, 0)
         // About 2% of orders are left unpaid at the counter and cancelled
         const cancelled = r() < 0.02
         if (cancelled) round.items.forEach((x) => (x.status = 'cancelled'))
         out.orders.push({
-          id: `${token}-o${ri}`,
+          id,
           number: number++,
           sessionToken: token,
           tableNumber: table.number,
@@ -122,7 +141,7 @@ function generateDay(dayStart: number, r: () => number, until: number, out: Hist
           items: round.items,
           payment: cancelled
             ? { status: 'cancelled', amount, cancelledAt: round.at + 6 * MIN }
-            : { status: 'paid', method: payMethod(r), amount, paidAt: round.at + MIN },
+            : paidWith(payMethod(r), id, amount, round.at + MIN),
         })
       })
       out.sessions.push({ id: 0, token, tableId: table.id, tableNumber: table.number, guests, status: 'closed', openedAt, closedAt })

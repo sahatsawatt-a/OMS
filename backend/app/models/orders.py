@@ -40,7 +40,8 @@ class Order(Base):
     currency: Mapped[str] = mapped_column(String(3), default="aud")
     payment_status: Mapped[str] = mapped_column(String(20), index=True)
     payment_method: Mapped[str | None] = mapped_column(String(20), nullable=True)
-    # Counter card payments only, for the record: staff note what the terminal showed
+    # Card payments: visa, mastercard, amex, eftpos or other (REQ-39). Phone payments get it
+    # from Stripe, staff pick it at the counter; empty for cash and for older orders
     card_brand: Mapped[str | None] = mapped_column(String(20), nullable=True)
     stripe_intent_id: Mapped[str | None] = mapped_column(String(255), unique=True, nullable=True)
     paid_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)

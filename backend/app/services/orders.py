@@ -25,6 +25,17 @@ NEXT_STATUS: dict[str, set[str]] = {
 
 # Stripe's minimum charge for AUD is $0.50
 MIN_STRIPE_AMOUNT = 50
+# Stripe's card brands mapped to the card types the reports show (REQ-39). Apple Pay and
+# Google Pay report the card behind them. Everything else (Discover, JCB, UnionPay, ...) is "other".
+STRIPE_CARD_BRANDS = {
+    "visa": "visa",
+    "mastercard": "mastercard",
+    "amex": "amex",
+    "eftpos_au": "eftpos",
+}
+# The simulated card in the demo (no Stripe keys) stands for Stripe's 4242 Visa test card
+SIMULATED_CARD_BRAND = "visa"
+
 # Unpaid "pay at counter" orders a table may have at once, so nobody can flood the staff screen
 MAX_WAITING_AT_COUNTER = 2
 
@@ -196,19 +207,60 @@ def place_order(db: Session, device: TableDevice, lines: list[OrderLineIn], pay:
                 "session_id": str(session.id),
                 "device": device.label,
             },
-            idempotency_key=f"oms-order-{order.id}",
+            # Order ids repeat across databases sharing one Stripe account (a test stack, the
+            # demo, a restored backup), and Stripe answers a reused key with the payment it made
+            # the first time, possibly one already paid. The random part keeps every order's
+            # key its own; Stripe's own retries of this one call still reuse it.
+            idempotency_key=f"oms-order-{order.id}-{secrets.token_hex(8)}",
         )
     except stripe.StripeError as exc:
         db.rollback()
         raise HTTPException(502, exc.user_message or "Could not start the card payment") from exc
+    if intent.status != "requires_payment_method":
+        # Not a fresh payment: never let an old one pay for this order
+        log.error(
+            "New PaymentIntent %s for order %s is already %s", intent.id, order.id, intent.status
+        )
+        db.rollback()
+        raise HTTPException(502, "Could not start the card payment")
     order.stripe_intent_id = intent.id
     db.commit()
     return Checkout(order=order, intent_id=intent.id, client_secret=intent.client_secret)
 
 
-def mark_paid(db: Session, order: Order, method: str) -> None:
+def _field(obj, key: str):
+    """Stripe objects are dicts; tests use plain objects."""
+    if obj is None:
+        return None
+    return obj.get(key) if isinstance(obj, dict) else getattr(obj, key, None)
+
+
+def card_brand_of(intent) -> str | None:
+    """The card type behind a succeeded PaymentIntent, read from its charge; None if unknown."""
+    charge = _field(intent, "latest_charge")
+    if isinstance(charge, str):
+        # Not expanded (e.g. in a webhook event): fetch the charge
+        try:
+            charge = stripe.Charge.retrieve(charge)
+        except stripe.StripeError:
+            log.warning("Could not read the card type of %s", _field(intent, "id"))
+            return None
+    details = _field(charge, "payment_method_details")
+    if details is None:
+        return None
+    if _field(details, "type") not in ("card", "card_present"):
+        # Paid another way (e.g. a buy-now-pay-later method)
+        return "other"
+    card = _field(details, "card") or _field(details, "card_present")
+    brand = _field(card, "brand")
+    return STRIPE_CARD_BRANDS.get(brand, "other") if brand else None
+
+
+def mark_paid(db: Session, order: Order, method: str, card_brand: str | None = None) -> None:
     """Idempotent: a webhook and the guest's own check may both arrive."""
     if order.payment_status == "paid":
+        if card_brand and not order.card_brand:
+            order.card_brand = card_brand
         return
     if order.payment_status == "cancelled":
         # Stripe took the money after the order was dropped (e.g. table cleared mid-payment).
@@ -219,6 +271,7 @@ def mark_paid(db: Session, order: Order, method: str) -> None:
         order.cancelled_at = None
     order.payment_status = "paid"
     order.payment_method = method
+    order.card_brand = card_brand
     order.paid_at = utcnow()
     make_visible(db, order)
 
@@ -230,18 +283,19 @@ def confirm_stripe(db: Session, order: Order) -> str:
     intent_id = order.stripe_intent_id or ""
     if intent_id.startswith("sim_"):
         # Demo without Stripe keys: the simulated card always succeeds
-        mark_paid(db, order, "stripe")
+        mark_paid(db, order, "stripe", SIMULATED_CARD_BRAND)
         db.commit()
         return "succeeded"
     if not intent_id.startswith("pi_"):
         raise HTTPException(409, "This order is not paid on the phone")
     try:
-        intent = stripe.PaymentIntent.retrieve(intent_id)
+        # The charge says which card paid (REQ-39)
+        intent = stripe.PaymentIntent.retrieve(intent_id, expand=["latest_charge"])
     except stripe.StripeError as exc:
         raise HTTPException(502, "Could not reach Stripe") from exc
     if intent.status == "succeeded":
         check_intent_matches(order, intent)
-        mark_paid(db, order, "stripe")
+        mark_paid(db, order, "stripe", card_brand_of(intent))
         db.commit()
     return intent.status
 

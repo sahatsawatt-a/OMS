@@ -30,17 +30,21 @@ export function sessionUrl(tableNumber: number, token: string): string {
   return `${base.replace(/\/$/, '')}/order?table=${tableNumber}#s=${encodeURIComponent(token)}`
 }
 
+/** Card types the Payments report splits by (REQ-39) */
+export const CARD_BRANDS: CardBrand[] = ['visa', 'mastercard', 'amex', 'eftpos', 'other']
+
 export const CARD_BRAND_LABEL: Record<CardBrand, string> = {
   visa: 'Visa',
   mastercard: 'Mastercard',
   amex: 'Amex',
-  eftpos: 'EFTPOS',
+  // The scheme writes its own name in lower case
+  eftpos: 'eftpos',
   other: 'Other card',
 }
 
-/** How a paid order was paid: "on phone", "in cash", "by card (Visa)" */
+/** How a paid order was paid: "on phone (Visa)", "in cash", "by card (Visa)" */
 export function paidBy(p: OrderPayment): string {
-  if (p.method === 'stripe') return 'on phone'
+  if (p.method === 'stripe') return p.cardBrand ? `on phone (${CARD_BRAND_LABEL[p.cardBrand]})` : 'on phone'
   if (p.method === 'cash') return 'in cash'
   return p.cardBrand ? `by card (${CARD_BRAND_LABEL[p.cardBrand]})` : 'by card'
 }

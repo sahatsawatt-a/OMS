@@ -1,9 +1,9 @@
 // Sales figures for the admin Reports tab. Pay first: every order is paid when it is placed,
 // so revenue is the sum of paid orders, counted at the time of payment.
-import { CARD_BRAND_LABEL } from '../../components/format'
+import { CARD_BRAND_LABEL, CARD_BRANDS } from '../../components/format'
 import { gstIncluded } from '../../demo/money'
 import type { History } from '../../demo/history'
-import type { DemoState, Order, PaymentMethod } from '../../demo/types'
+import type { CardBrand, DemoState, Order, PaymentMethod } from '../../demo/types'
 
 // ---------- Periods ----------
 
@@ -92,6 +92,79 @@ function csvCell(v: string | number): string {
   return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s
 }
 export const toCsv = (rows: (string | number)[][]) => rows.map((r) => r.map(csvCell).join(',')).join('\n')
+
+// ---------- Payments by card type (REQ-39) ----------
+
+/** What paid: a card type, cash, or a card from before card types were recorded */
+export type PayType = CardBrand | 'unknown' | 'cash'
+export const PAY_TYPES: PayType[] = [...CARD_BRANDS, 'unknown', 'cash']
+export const PAY_TYPE_LABEL: Record<PayType, string> = { ...CARD_BRAND_LABEL, unknown: 'Card, type not recorded', cash: 'Cash' }
+export type PayTypeFilter = 'all' | 'cards' | PayType
+export type ChannelFilter = 'all' | 'phone' | 'counter'
+
+export const payTypeOf = (o: Order): PayType => (o.payment.method === 'cash' ? 'cash' : (o.payment.cardBrand ?? 'unknown'))
+const channelOf = (o: Order): 'phone' | 'counter' => (o.payment.method === 'stripe' ? 'phone' : 'counter')
+
+export type PaymentLine = { id: string; paidAt: number; number: number; table: number; channel: 'phone' | 'counter'; type: PayType; amount: number }
+export type PayTypeRow = { type: PayType; label: string; payments: number; phone: number; counter: number; amount: number; share: number }
+export type PaymentsReport = { lines: PaymentLine[]; summary: PayTypeRow[]; payments: number; amount: number; csv: string }
+
+const matchesType = (type: PayType, filter: PayTypeFilter) =>
+  filter === 'all' || filter === type || (filter === 'cards' && type !== 'cash')
+
+const csvTime = (t: number) => {
+  const d = new Date(t)
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`
+}
+const dollars = (cents: number) => (cents / 100).toFixed(2)
+
+/** Every payment in the range that matches the filters, newest first, with a summary per type */
+export function paymentsReport({ orders }: Data, range: Range, type: PayTypeFilter, channel: ChannelFilter): PaymentsReport {
+  const lines: PaymentLine[] = paidIn(orders, range.start, range.end)
+    .filter((o) => channel === 'all' || channelOf(o) === channel)
+    .filter((o) => matchesType(payTypeOf(o), type))
+    .map((o) => ({
+      id: o.id,
+      paidAt: o.payment.paidAt!,
+      number: o.number,
+      table: o.tableNumber,
+      channel: channelOf(o),
+      type: payTypeOf(o),
+      amount: o.payment.amount,
+    }))
+    .sort((a, b) => b.paidAt - a.paidAt)
+  const amount = sum(lines, (l) => l.amount)
+  const summary = PAY_TYPES.filter((t) => matchesType(t, type))
+    .map((t) => {
+      const list = lines.filter((l) => l.type === t)
+      const total = sum(list, (l) => l.amount)
+      return {
+        type: t,
+        label: PAY_TYPE_LABEL[t],
+        payments: list.length,
+        phone: list.filter((l) => l.channel === 'phone').length,
+        counter: list.filter((l) => l.channel === 'counter').length,
+        amount: total,
+        share: amount ? total / amount : 0,
+      }
+    })
+    // Types with no payments are left out, except a type picked on purpose
+    .filter((r) => r.payments > 0 || r.type === type)
+  const csv = toCsv([
+    ['Paid at', 'Order', 'Table', 'Paid via', 'Card type', 'Amount (AUD)', 'GST included (AUD)'],
+    ...lines.map((l) => [
+      csvTime(l.paidAt),
+      l.number,
+      l.table,
+      l.channel === 'phone' ? 'Phone (Stripe)' : 'Counter',
+      PAY_TYPE_LABEL[l.type],
+      dollars(l.amount),
+      dollars(gstIncluded(l.amount)),
+    ]),
+  ])
+  return { lines, summary, payments: lines.length, amount, csv }
+}
 
 // ---------- Sales ----------
 

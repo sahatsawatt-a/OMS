@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { formatElapsed, formatTime, useNow } from '../../components/format'
+import { CARD_BRAND_LABEL, formatElapsed, formatTime, useNow } from '../../components/format'
 import { Icon } from '../../components/Icon'
 import { DemoBanner, Sheet, StatusBadge } from '../../components/shared'
 import { useMediaQuery } from '../../components/useMediaQuery'
@@ -646,7 +646,7 @@ function CartSheet({
   )
 }
 
-const PAY_LABEL: Record<string, string> = { stripe: 'Paid on phone', card_terminal: 'Paid by card', cash: 'Paid in cash' }
+const PAY_LABEL: Record<string, string> = { stripe: 'Paid on phone', card_terminal: 'Paid at counter', cash: 'Paid in cash' }
 
 type Scope = 'mine' | 'table'
 
@@ -712,7 +712,7 @@ function OrdersView({ orders, scope, setScope, me, tableCount, children }: Order
           </div>
           <div className={`order-pay order-pay-${o.payment.status}`}>
             {o.payment.status === 'paid'
-              ? `${PAY_LABEL[o.payment.method ?? 'stripe']} · ${formatAUD(o.payment.amount)}`
+              ? `${PAY_LABEL[o.payment.method ?? 'stripe']}${o.payment.method !== 'cash' && o.payment.cardBrand ? ` · ${CARD_BRAND_LABEL[o.payment.cardBrand]}` : ''} · ${formatAUD(o.payment.amount)}`
               : o.payment.status === 'awaiting_counter'
                 ? `Waiting for payment at the counter · ${formatAUD(o.payment.amount)}`
                 : 'Cancelled, not paid'}

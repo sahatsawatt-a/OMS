@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 from app.core.config import get_settings
 from app.db.session import get_db
 from app.models import Order
-from app.services.orders import check_intent_matches, mark_paid
+from app.services.orders import card_brand_of, check_intent_matches, mark_paid
 
 log = logging.getLogger(__name__)
 
@@ -58,7 +58,7 @@ async def stripe_webhook(
             log.info("Webhook for unknown PaymentIntent %s", intent["id"])
         else:
             check_intent_matches(order, intent)
-            mark_paid(db, order, "stripe")
+            mark_paid(db, order, "stripe", card_brand_of(intent))
             db.commit()
     # payment_failed needs nothing: the guest can retry with the same order, or abandon it
     return {"received": True}

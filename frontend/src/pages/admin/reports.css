@@ -558,3 +558,30 @@
     grid-template-columns: 1fr;
   }
 }
+
+/* Payments by card type (REQ-39) */
+.payments-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.payments-filters .segmented {
+  max-width: 100%;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.payments-filters .segmented button {
+  white-space: nowrap;
+}
+.kpis.three {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+.payments-more {
+  align-items: center;
+  margin-top: 12px;
+}
+@media (max-width: 760px) {
+  .kpis.three {
+    grid-template-columns: 1fr;
+  }
+}
