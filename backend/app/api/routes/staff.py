@@ -147,6 +147,8 @@ def counter_payment(
         raise HTTPException(422, "The discount is more than the bill")
     if body.card_brand and body.method != "card_terminal":
         raise HTTPException(422, "A card brand is only for card payments")
+    if body.method == "card_terminal" and body.card_brand is None:
+        raise HTTPException(422, "Choose the card type: Visa, Mastercard, Amex, eftpos or other")
     order.discount = body.discount
     order.amount -= body.discount
     order.payment_status = "paid"

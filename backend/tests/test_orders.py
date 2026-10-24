@@ -102,9 +102,10 @@ def test_card_brand_is_only_for_card_payments(staff, seated, phone):
     assert (
         staff.post(url, json={"method": "card_terminal", "cardBrand": "diners"}).status_code == 422
     )
-    # The brand is optional
-    paid = staff.post(url, json={"method": "card_terminal"}).json()
-    assert paid["payment"]["status"] == "paid" and "cardBrand" not in paid["payment"]
+    # A card payment needs its type (REQ-39: the Payments report splits by it)
+    assert staff.post(url, json={"method": "card_terminal"}).status_code == 422
+    paid = staff.post(url, json={"method": "card_terminal", "cardBrand": "amex"}).json()
+    assert paid["payment"]["status"] == "paid" and paid["payment"]["cardBrand"] == "amex"
 
 
 def test_unpaid_counter_order_can_be_cancelled(staff, seated, phone):
@@ -120,7 +121,10 @@ def test_item_status_follows_the_lifecycle(staff, seated, phone):
     url = f"/api/orders/{o['id']}/items/{item}/status"
     # Not paid yet: food is not served
     assert staff.put(url, json={"status": "served"}).status_code == 409
-    staff.post(f"/api/orders/{o['id']}/counter-payment", json={"method": "card_terminal"})
+    staff.post(
+        f"/api/orders/{o['id']}/counter-payment",
+        json={"method": "card_terminal", "cardBrand": "visa"},
+    )
     # No kitchen states for now
     assert staff.put(url, json={"status": "preparing"}).status_code == 422
     assert staff.put(url, json={"status": "served"}).status_code == 200
@@ -157,22 +161,28 @@ def test_no_simulated_payments_outside_demo_mode(client, seated, phone, settings
     assert res.status_code == 503
 
 
-def stripe_on(settings, monkeypatch, intent_status="succeeded"):
+def stripe_on(settings, monkeypatch, intent_status="succeeded", brand="visa"):
     settings.stripe_secret_key = "sk_test_dummy"
     settings.stripe_publishable_key = "pk_test_dummy"
     created = {}
 
     def fake_create(**kwargs):
         created.update(kwargs)
-        return SimpleNamespace(id="pi_123", client_secret="pi_123_secret_abc")
+        return SimpleNamespace(
+            id="pi_123", client_secret="pi_123_secret_abc", status="requires_payment_method"
+        )
 
-    def fake_retrieve(intent_id):
+    def fake_retrieve(intent_id, **kwargs):
+        # With expand=["latest_charge"] Stripe returns the charge, which names the card
+        card = SimpleNamespace(brand=brand)
+        charge = SimpleNamespace(payment_method_details=SimpleNamespace(type="card", card=card))
         return SimpleNamespace(
             id=intent_id,
             status=intent_status,
             amount=created["amount"],
             currency="aud",
             metadata=created["metadata"],
+            latest_charge=charge if "latest_charge" in kwargs.get("expand", []) else "ch_123",
         )
 
     monkeypatch.setattr("stripe.PaymentIntent.create", fake_create)
@@ -259,3 +269,31 @@ class _Obj(dict):
 
     def __getattr__(self, name):
         return self[name]
+
+
+def test_each_order_gets_its_own_stripe_key(client, seated, phone, settings, monkeypatch):
+    # Order ids repeat across databases on one Stripe account; a reused key would make Stripe
+    # hand back an old payment (ticket #19)
+    stripe_on(settings, monkeypatch)
+    keys = []
+
+    def fake_create(**kwargs):
+        keys.append(kwargs["idempotency_key"])
+        n = len(keys)
+        return SimpleNamespace(id=f"pi_{n}", client_secret="x", status="requires_payment_method")
+
+    monkeypatch.setattr("stripe.PaymentIntent.create", fake_create)
+    for _ in range(2):
+        order(phone, [{"menuItemId": "gai-tod", "quantity": 1}], pay="stripe")
+    assert all(k.startswith("oms-order-") for k in keys) and keys[0] != keys[1]
+
+
+def test_an_old_payment_never_pays_a_new_order(client, staff, seated, phone, settings, monkeypatch):
+    stripe_on(settings, monkeypatch)
+    monkeypatch.setattr(
+        "stripe.PaymentIntent.create",
+        lambda **kwargs: SimpleNamespace(id="pi_old", client_secret="x", status="succeeded"),
+    )
+    res = order(phone, [{"menuItemId": "gai-tod", "quantity": 1}], pay="stripe")
+    assert res.status_code == 502
+    assert staff.get("/api/staff/state").json()["orders"] == []

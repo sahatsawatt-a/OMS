@@ -21,6 +21,7 @@ from app.models import (
     OptionGroup,
     Order,
     OrderItem,
+    TableDevice,
     TableSession,
 )
 from app.services.orders import make_visible, token
@@ -138,6 +139,8 @@ def clear_service(db: Session) -> None:
     """Demo only: remove every table session and order."""
     db.execute(delete(OrderItem))
     db.execute(delete(Order))
+    # Phones belong to sessions (and orders to phones), so they go in between
+    db.execute(delete(TableDevice))
     db.execute(delete(TableSession))
     db.flush()
 
@@ -194,8 +197,9 @@ def seed_service(db: Session) -> None:
 
     placed: list[tuple] = []
 
-    def order(session, minutes_ago, pay, items):
-        placed.append((session, minutes_ago, pay, items))
+    def order(session, minutes_ago, pay, items, card=None):
+        # card: the card type for card payments (REQ-39)
+        placed.append((session, minutes_ago, pay, items, card))
 
     t1 = seat(1, 2, 95, closed_minutes_ago=40)
     order(
@@ -207,6 +211,7 @@ def seed_service(db: Session) -> None:
             item("pineapple-fried-rice", 2, "served"),
             item("ice-lemon-tea", 2, "served"),
         ],
+        card="mastercard",
     )
 
     t2 = seat(2, 2, 8, waiter=1)
@@ -219,6 +224,7 @@ def seed_service(db: Session) -> None:
             item("pud-see-ew", 1, "submitted", ["Chicken"]),
             item("iced-tea", 2, "submitted", ["Ice milk tea", "Standard"]),
         ],
+        card="visa",
     )
 
     t3 = seat(3, 4, 38)
@@ -232,6 +238,7 @@ def seed_service(db: Session) -> None:
             item("soft-drink", 2, "served", ["Coke"]),
             item("iced-tea", 2, "served", ["Ice milk tea", "Standard"]),
         ],
+        card="amex",
     )
     order(
         t3,
@@ -242,6 +249,7 @@ def seed_service(db: Session) -> None:
             item("pad-grapow", 2, "submitted", ["Minced pork"], "fried egg on top"),
             item("jasmine-rice", 3, "submitted"),
         ],
+        card="eftpos",
     )
 
     t5 = seat(5, 3, 12)
@@ -268,12 +276,13 @@ def seed_service(db: Session) -> None:
             item("tom-yum", 1, "submitted", ["Chicken", "Bowl"]),
             item("som-tum", 1, "submitted", ["Mixed"], "less chilli"),
         ],
+        card="visa",
     )
 
     seat(7, 6, 2)
 
     # Numbered in the order they were placed
-    for session, minutes_ago, pay, items in sorted(placed, key=lambda p: -p[1]):
+    for session, minutes_ago, pay, items, card in sorted(placed, key=lambda p: -p[1]):
         created = ago(minutes_ago)
         o = Order(
             session_id=session.id,
@@ -286,6 +295,7 @@ def seed_service(db: Session) -> None:
                 pay, "paid"
             ),
             payment_method=pay if pay not in ("counter", "cancelled") else None,
+            card_brand=card,
             paid_at=created + timedelta(minutes=1) if pay not in ("counter", "cancelled") else None,
             cancelled_at=created + timedelta(minutes=4) if pay == "cancelled" else None,
             items=items,

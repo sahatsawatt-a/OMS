@@ -3,7 +3,7 @@ import { Icon } from '../../components/Icon'
 import { useNow } from '../../components/format'
 import { useMediaQuery } from '../../components/useMediaQuery'
 import { historyForToday } from '../../demo/history'
-import { formatAUD } from '../../demo/money'
+import { formatAUD, gstIncluded } from '../../demo/money'
 import type { DemoState } from '../../demo/types'
 import {
   busyReport,
@@ -14,6 +14,8 @@ import {
   gstReport,
   HOURS,
   niceStep,
+  PAY_TYPE_LABEL,
+  paymentsReport,
   PRESETS,
   rangeFor,
   salesReport,
@@ -23,17 +25,19 @@ import {
   WEEKDAYS,
   type Bucket,
   type BusyReport,
+  type ChannelFilter,
   type CompareMode,
   type Data,
   type DishRow,
   type GstRow,
   type HeatCell,
+  type PayTypeFilter,
   type Preset,
   type SalesReport,
 } from './reports'
 import './reports.css'
 
-type Section = 'sales' | 'busy' | 'gst'
+type Section = 'sales' | 'payments' | 'busy' | 'gst'
 
 const compactAUD = (cents: number) => {
   const dollars = cents / 100
@@ -88,6 +92,7 @@ export default function ReportsView({ state }: { state: DemoState }) {
         {(
           [
             ['sales', 'Sales'],
+            ['payments', 'Payments'],
             ['busy', 'Busiest times'],
             ['gst', 'GST / BAS'],
           ] as const
@@ -134,6 +139,7 @@ export default function ReportsView({ state }: { state: DemoState }) {
       )}
 
       {section === 'sales' && <SalesView report={salesReport(data, range, compare)} rangeLabel={range.label} compareLabel={compare.label} narrow={narrow} now={now} />}
+      {section === 'payments' && <PaymentsView data={data} range={range} rangeLabel={range.label} />}
       {section === 'busy' && <BusyView report={busyReport(data, range)} rangeLabel={range.label} narrow={narrow} />}
       {section === 'gst' && <GstView data={data} now={now} />}
 
@@ -248,6 +254,129 @@ function SalesView({
     </>
   )
 }
+
+// ---------- Payments by card type (REQ-39) ----------
+
+const TYPE_FILTERS: { id: PayTypeFilter; label: string }[] = [
+  { id: 'all', label: 'All' },
+  { id: 'cards', label: 'All cards' },
+  { id: 'visa', label: 'Visa' },
+  { id: 'mastercard', label: 'Mastercard' },
+  { id: 'amex', label: 'Amex' },
+  { id: 'eftpos', label: 'eftpos' },
+  { id: 'other', label: 'Other card' },
+  { id: 'unknown', label: 'Not recorded' },
+  { id: 'cash', label: 'Cash' },
+]
+const CHANNEL_FILTERS: { id: ChannelFilter; label: string }[] = [
+  { id: 'all', label: 'Phone and counter' },
+  { id: 'phone', label: 'Phone (Stripe)' },
+  { id: 'counter', label: 'Counter' },
+]
+// Long periods have thousands of payments: show them a page at a time; the CSV has all of them
+const PAGE = 100
+
+const paidAtLabel = (t: number) =>
+  new Date(t).toLocaleString('en-AU', { day: 'numeric', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit' })
+
+function PaymentsView({ data, range, rangeLabel }: { data: Data; range: ReturnType<typeof rangeFor>; rangeLabel: string }) {
+  const [type, setType] = useState<PayTypeFilter>('all')
+  const [channel, setChannel] = useState<ChannelFilter>('all')
+  const [shown, setShown] = useState(PAGE)
+  const report = useMemo(() => paymentsReport(data, range, type, channel), [data, range, type, channel])
+  const typeLabel = TYPE_FILTERS.find((f) => f.id === type)!.label
+  const lines = report.lines.slice(0, shown)
+  const fileName = `ying-thai-2-payments-${type}-${isoDay(range.start)}-to-${isoDay(range.end - 1)}.csv`
+
+  const pick = (next: () => void) => {
+    next()
+    setShown(PAGE)
+  }
+
+  return (
+    <>
+      <div className="payments-filters">
+        <div className="segmented small-seg type-filter" role="group" aria-label="Card type">
+          {TYPE_FILTERS.map((f) => (
+            <button key={f.id} className={type === f.id ? 'active' : ''} aria-pressed={type === f.id} onClick={() => pick(() => setType(f.id))}>
+              {f.label}
+            </button>
+          ))}
+        </div>
+        <div className="segmented small-seg" role="group" aria-label="Paid via">
+          {CHANNEL_FILTERS.map((f) => (
+            <button key={f.id} className={channel === f.id ? 'active' : ''} aria-pressed={channel === f.id} onClick={() => pick(() => setChannel(f.id))}>
+              {f.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="kpis three">
+        <StatTile label={type === 'all' ? 'Payments' : `${typeLabel} payments`} value={report.payments.toLocaleString('en-AU')} sub={rangeLabel} />
+        <StatTile label="Amount taken" value={formatAUD(report.amount)} sub={`Includes GST ${formatAUD(gstIncluded(report.amount))}`} />
+        <StatTile label="Average payment" value={formatAUD(report.payments ? Math.round(report.amount / report.payments) : 0)} />
+      </div>
+
+      <section className="card report-card">
+        <header className="report-card-head">
+          <div>
+            <h2>By card type</h2>
+            <p className="muted small">
+              {rangeLabel} · {CHANNEL_FILTERS.find((f) => f.id === channel)!.label.toLowerCase()} · counted when paid
+            </p>
+          </div>
+        </header>
+        <DataTable
+          head={['Card type', 'Payments', 'On phone', 'At counter', 'Amount', 'Share']}
+          rows={
+            report.summary.length
+              ? [
+                  ...report.summary.map((r) => [r.label, r.payments, r.phone, r.counter, formatAUD(r.amount), pct(r.share)]),
+                  ['Total', report.payments, sumOf(report.summary, 'phone'), sumOf(report.summary, 'counter'), formatAUD(report.amount), report.payments ? '100%' : '0%'],
+                ]
+              : []
+          }
+          totalRow
+          empty="No payments match in this period."
+        />
+      </section>
+
+      <section className="card report-card">
+        <header className="report-card-head">
+          <div>
+            <h2>Payments</h2>
+            <p className="muted small">
+              Newest first · {report.payments.toLocaleString('en-AU')} {report.payments === 1 ? 'payment' : 'payments'}. The CSV has exactly these rows.
+            </p>
+          </div>
+          <div className="row gap wrap card-actions">
+            <button className="btn btn-sm btn-outline" onClick={() => download(fileName, report.csv)} disabled={report.payments === 0}>
+              Download CSV
+            </button>
+          </div>
+        </header>
+        <DataTable
+          head={['Paid at', 'Order', 'Table', 'Paid via', 'Card type', 'Amount']}
+          rows={lines.map((l) => [paidAtLabel(l.paidAt), `#${l.number}`, l.table, l.channel === 'phone' ? 'Phone' : 'Counter', PAY_TYPE_LABEL[l.type], formatAUD(l.amount)])}
+          empty="No payments match in this period."
+        />
+        {report.payments > shown && (
+          <div className="row between payments-more">
+            <span className="muted small">
+              Showing {shown.toLocaleString('en-AU')} of {report.payments.toLocaleString('en-AU')}
+            </span>
+            <button className="btn btn-sm btn-outline" onClick={() => setShown((n) => n + PAGE)}>
+              Show {Math.min(PAGE, report.payments - shown)} more
+            </button>
+          </div>
+        )}
+      </section>
+    </>
+  )
+}
+
+const sumOf = <K extends 'phone' | 'counter'>(rows: { [k in K]: number }[], key: K) => rows.reduce((n, r) => n + r[key], 0)
 
 // ---------- Busiest times ----------
 

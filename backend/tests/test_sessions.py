@@ -62,3 +62,10 @@ def test_demo_reset_seats_sample_tables(staff):
 def test_demo_reset_is_off_outside_demo_mode(staff, settings):
     settings.demo_mode = False
     assert staff.post("/api/demo/reset").status_code == 404
+
+
+def test_demo_reset_works_after_phones_joined(staff, phone):
+    # Phones (table_devices) belong to sessions: the reset must remove them too
+    phone.order([{"menuItemId": "gai-tod", "quantity": 1}])
+    assert staff.post("/api/demo/reset").status_code == 200
+    assert staff.post("/api/demo/clear").status_code == 200

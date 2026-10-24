@@ -1,7 +1,7 @@
 import { QRCodeSVG } from 'qrcode.react'
 import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { CARD_BRAND_LABEL, formatElapsed, formatTime, paidBy, sessionUrl, useNow } from '../../components/format'
+import { CARD_BRAND_LABEL, CARD_BRANDS, formatElapsed, formatTime, paidBy, sessionUrl, useNow } from '../../components/format'
 import { Icon } from '../../components/Icon'
 import { Sheet, StatusBadge } from '../../components/shared'
 import { useMediaQuery } from '../../components/useMediaQuery'
@@ -230,8 +230,6 @@ function OpenSessionSheet({ table, onClose, onOpen }: { table: Table; onClose: (
   )
 }
 
-const CARD_BRANDS: CardBrand[] = ['visa', 'mastercard', 'amex', 'eftpos', 'other']
-
 /** Take a counter payment: an optional discount ($ or %), cash or card, and the card brand for the record */
 function TakePaymentSheet({ order, onClose }: { order: Order; onClose: () => void }) {
   const [unit, setUnit] = useState<'$' | '%'>('$')
@@ -245,6 +243,8 @@ function TakePaymentSheet({ order, onClose }: { order: Order; onClose: () => voi
   const discount = Math.round(unit === '$' ? n * 100 : (bill * n) / 100)
   const tooMuch = n < 0 || discount > bill
   const toPay = bill - Math.max(0, discount)
+  // A card payment needs its type: the Payments report splits Visa, Mastercard, ... (REQ-39)
+  const needsBrand = method === 'card_terminal' && !brand
 
   return (
     <Sheet
@@ -253,7 +253,7 @@ function TakePaymentSheet({ order, onClose }: { order: Order; onClose: () => voi
       footer={
         <button
           className="btn btn-primary btn-block"
-          disabled={saving || tooMuch}
+          disabled={saving || tooMuch || needsBrand}
           onClick={async () => {
             setSaving(true)
             const ok = await actions.confirmCounterPayment(order.id, {
@@ -322,14 +322,15 @@ function TakePaymentSheet({ order, onClose }: { order: Order; onClose: () => voi
 
       {method === 'card_terminal' && (
         <>
-          <p className="muted">Card, for the record (optional)</p>
-          <div className="choice-picker" role="radiogroup" aria-label="Card brand">
+          <p className="muted">Card type</p>
+          <div className="choice-picker" role="radiogroup" aria-label="Card type">
             {CARD_BRANDS.map((b) => (
-              <button key={b} role="radio" aria-checked={brand === b} className={brand === b ? 'active' : ''} onClick={() => setBrand(brand === b ? undefined : b)}>
+              <button key={b} role="radio" aria-checked={brand === b} className={brand === b ? 'active' : ''} onClick={() => setBrand(b)}>
                 {CARD_BRAND_LABEL[b]}
               </button>
             ))}
           </div>
+          {needsBrand && <p className="muted small">Choose the card type to confirm.</p>}
         </>
       )}
     </Sheet>

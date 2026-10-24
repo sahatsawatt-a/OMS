@@ -87,7 +87,8 @@ export type OrderItem = {
 }
 
 export type PaymentMethod = 'stripe' | 'cash' | 'card_terminal'
-/** What the card terminal showed, for the record only */
+
+/** Card types the Payments report splits by (REQ-39) */
 export type CardBrand = 'visa' | 'mastercard' | 'amex' | 'eftpos' | 'other'
 
 /**
@@ -102,7 +103,7 @@ export type OrderPayment = {
   method?: PaymentMethod
   /** Taken off at the counter, in cents */
   discount?: number
-  /** Counter card payments only */
+  /** Card payments: which card type paid (from Stripe on the phone, picked by staff at the counter); missing for cash and older orders */
   cardBrand?: CardBrand
   paidAt?: number
   cancelledAt?: number

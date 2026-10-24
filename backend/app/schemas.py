@@ -11,6 +11,7 @@ Allergen = Literal["dairy", "peanuts", "tree-nuts", "shellfish", "egg"]
 ItemStatus = Literal["submitted", "served", "cancelled"]
 PaymentStatus = Literal["pending", "awaiting_counter", "paid", "cancelled"]
 PaymentMethod = Literal["stripe", "cash", "card_terminal"]
+# Card types the reports split by (REQ-39)
 CardBrand = Literal["visa", "mastercard", "amex", "eftpos", "other"]
 
 # A resized JPEG from the admin page is ~100-300 KB as a data URL (stored apart, see
@@ -249,7 +250,7 @@ class CounterPaymentIn(Model):
     method: Literal["cash", "card_terminal"]
     # In cents, off the order's amount
     discount: int = Field(default=0, ge=0)
-    # Card payments only, for the record
+    # Staff pick it when taking a card at the counter: required for cards, refused for cash
     card_brand: CardBrand | None = None
 
 
