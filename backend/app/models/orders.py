@@ -34,10 +34,14 @@ class Order(Base):
     number: Mapped[int | None] = mapped_column(Integer, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, index=True)
 
+    # What was actually paid; the bill before any counter discount is amount + discount
     amount: Mapped[int] = mapped_column(Integer)
+    discount: Mapped[int] = mapped_column(Integer, default=0)
     currency: Mapped[str] = mapped_column(String(3), default="aud")
     payment_status: Mapped[str] = mapped_column(String(20), index=True)
     payment_method: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    # Counter card payments only, for the record: staff note what the terminal showed
+    card_brand: Mapped[str | None] = mapped_column(String(20), nullable=True)
     stripe_intent_id: Mapped[str | None] = mapped_column(String(255), unique=True, nullable=True)
     paid_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     cancelled_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)

@@ -278,6 +278,53 @@
   color: var(--bg);
 }
 
+/* Take payment sheet */
+.pay-bill {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 18px;
+}
+.pay-bill .field {
+  margin-top: 6px;
+}
+.pay-bill .field input {
+  min-width: 0;
+}
+.pay-error {
+  margin: 0;
+  color: var(--danger);
+}
+.choice-picker {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
+  gap: 8px;
+  margin: 8px 0 14px;
+}
+.choice-picker.unit-picker {
+  grid-template-columns: repeat(2, 44px);
+  margin: 0;
+}
+.choice-picker button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 44px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-strong);
+  background: var(--surface);
+  color: var(--text);
+  font-size: 0.95rem;
+  font-weight: 500;
+  cursor: pointer;
+}
+.choice-picker button.active {
+  background: var(--text);
+  border-color: var(--text);
+  color: var(--bg);
+}
+
 .qr-print {
   display: flex;
   flex-direction: column;

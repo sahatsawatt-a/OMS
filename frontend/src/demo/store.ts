@@ -7,7 +7,7 @@ import { useEffect, useSyncExternalStore } from 'react'
 import { api, ApiError, currentStaffKey, onStaffKeyChange } from '../lib/api'
 import { onLiveChange } from '../lib/live'
 import { shortId } from './ids'
-import type { CartLine, DemoState, GuestState, ItemStatus, MenuItem, Order, PaymentMethod, TableSession } from './types'
+import type { CardBrand, CartLine, DemoState, GuestState, ItemStatus, MenuItem, Order, PaymentMethod, TableSession } from './types'
 
 export { randomToken } from './ids'
 
@@ -299,9 +299,9 @@ export const actions = {
     return run(() => post<TableSession>(`/tables/${encodeURIComponent(tableId)}/sessions`, { guests }))
   },
 
-  /** Staff took the money at the counter; the order now goes through */
-  confirmCounterPayment(orderId: string, method: Exclude<PaymentMethod, 'stripe'>) {
-    return run(() => post(`/orders/${orderId}/counter-payment`, { method }))
+  /** Staff took the money at the counter, less any discount (cents); the order now goes through */
+  confirmCounterPayment(orderId: string, payment: { method: Exclude<PaymentMethod, 'stripe'>; discount?: number; cardBrand?: CardBrand }) {
+    return run(() => post(`/orders/${orderId}/counter-payment`, payment))
   },
 
   /** Cancel an order that was never paid; nothing is made */

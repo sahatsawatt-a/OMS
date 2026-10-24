@@ -1,5 +1,6 @@
 // Sales figures for the admin Reports tab. Pay first: every order is paid when it is placed,
 // so revenue is the sum of paid orders, counted at the time of payment.
+import { CARD_BRAND_LABEL } from '../../components/format'
 import { gstIncluded } from '../../demo/money'
 import type { History } from '../../demo/history'
 import type { DemoState, Order, PaymentMethod } from '../../demo/types'
@@ -108,6 +109,8 @@ export type SalesReport = {
   prev: { revenue: number; orders: number; avgOrder: number }
   waiting: { orders: number; amount: number }
   cancelled: { orders: number; amount: number }
+  /** Taken off counter bills; revenue is already after them */
+  discounts: { orders: number; amount: number }
   buckets: Bucket[]
   bucketUnit: 'hour' | 'day' | 'month'
   dishes: DishRow[]
@@ -176,8 +179,9 @@ export function salesReport({ orders, state }: Data, range: Range, compare: Rang
     return state.menu.categories.find((c) => c.id === item?.categoryId)?.name ?? 'Other'
   }
   const dishMap = new Map<string, DishRow>()
-  const csvRows: (string | number)[][] = [['Paid at', 'Order', 'Table', 'Dish', 'Category', 'Quantity', 'Unit price (AUD)', 'Line total (AUD)', 'Payment']]
+  const csvRows: (string | number)[][] = [['Paid at', 'Order', 'Table', 'Dish', 'Category', 'Quantity', 'Unit price (AUD)', 'Line total (AUD)', 'Payment', 'Card brand', 'Order discount (AUD)']]
   for (const o of paid) {
+    let first = true
     for (const i of o.items) {
       if (i.status === 'cancelled') continue
       const category = categoryOf(i.menuItemId)
@@ -195,7 +199,11 @@ export function salesReport({ orders, state }: Data, range: Range, compare: Rang
         (i.unitPrice / 100).toFixed(2),
         ((i.unitPrice * i.quantity) / 100).toFixed(2),
         PAYMENT_LABEL[o.payment.method!],
+        o.payment.cardBrand ? CARD_BRAND_LABEL[o.payment.cardBrand] : '',
+        // Once per order, on its first line, so the column adds up
+        first && o.payment.discount ? (o.payment.discount / 100).toFixed(2) : '',
       ])
+      first = false
     }
   }
   const dishes = [...dishMap.values()].sort((a, b) => b.revenue - a.revenue)
@@ -225,6 +233,7 @@ export function salesReport({ orders, state }: Data, range: Range, compare: Rang
     prev: { revenue: prevRevenue, orders: prevPaid.length, avgOrder: prevPaid.length ? Math.round(prevRevenue / prevPaid.length) : 0 },
     waiting: { orders: waitingOrders.length, amount: sum(waitingOrders, (o) => o.payment.amount) },
     cancelled: { orders: cancelledOrders.length, amount: sum(cancelledOrders, (o) => o.payment.amount) },
+    discounts: { orders: paid.filter((o) => o.payment.discount).length, amount: sum(paid, (o) => o.payment.discount ?? 0) },
     buckets,
     bucketUnit,
     dishes,

@@ -139,12 +139,19 @@ def _order(db: Session, order_id: int) -> Order:
 def counter_payment(
     order_id: int, body: CounterPaymentIn, db: Session = Depends(get_db)
 ) -> OrderOut:
-    """Staff took the money at the counter; the order now goes through."""
+    """Staff took the money at the counter, less any discount; the order now goes through."""
     order = _order(db, order_id)
     if order.payment_status != "awaiting_counter":
         raise HTTPException(409, "This order is not waiting for payment")
+    if body.discount > order.amount:
+        raise HTTPException(422, "The discount is more than the bill")
+    if body.card_brand and body.method != "card_terminal":
+        raise HTTPException(422, "A card brand is only for card payments")
+    order.discount = body.discount
+    order.amount -= body.discount
     order.payment_status = "paid"
     order.payment_method = body.method
+    order.card_brand = body.card_brand
     order.paid_at = utcnow()
     db.commit()
     return order_out(order)
