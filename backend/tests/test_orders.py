@@ -72,6 +72,41 @@ def test_counter_order_flow(staff, seated, phone):
     assert staff.post(f"/api/sessions/{seated['id']}/close").status_code == 200
 
 
+def test_counter_payment_records_discount_and_card_brand(staff, seated, phone):
+    o = order(phone, [{"menuItemId": "gai-tod", "quantity": 2}]).json()["order"]
+    body = {"method": "card_terminal", "discount": 500, "cardBrand": "visa"}
+    paid = staff.post(f"/api/orders/{o['id']}/counter-payment", json=body).json()
+    # 2 x $14.90 = $29.80, less $5
+    assert paid["payment"]["amount"] == 2480
+    assert paid["payment"]["discount"] == 500
+    assert paid["payment"]["cardBrand"] == "visa"
+    state = staff.get("/api/staff/state").json()
+    saved = next(x for x in state["orders"] if x["id"] == o["id"])
+    assert saved["payment"]["discount"] == 500 and saved["payment"]["cardBrand"] == "visa"
+
+
+def test_counter_discount_cannot_be_more_than_the_bill(staff, seated, phone):
+    o = order(phone, [{"menuItemId": "gai-tod", "quantity": 1}]).json()["order"]
+    url = f"/api/orders/{o['id']}/counter-payment"
+    assert staff.post(url, json={"method": "cash", "discount": 1491}).status_code == 422
+    assert staff.post(url, json={"method": "cash", "discount": -1}).status_code == 422
+    # A full discount is allowed (e.g. a staff meal)
+    paid = staff.post(url, json={"method": "cash", "discount": 1490}).json()
+    assert paid["payment"]["amount"] == 0 and paid["payment"]["discount"] == 1490
+
+
+def test_card_brand_is_only_for_card_payments(staff, seated, phone):
+    o = order(phone, [{"menuItemId": "gai-tod", "quantity": 1}]).json()["order"]
+    url = f"/api/orders/{o['id']}/counter-payment"
+    assert staff.post(url, json={"method": "cash", "cardBrand": "visa"}).status_code == 422
+    assert (
+        staff.post(url, json={"method": "card_terminal", "cardBrand": "diners"}).status_code == 422
+    )
+    # The brand is optional
+    paid = staff.post(url, json={"method": "card_terminal"}).json()
+    assert paid["payment"]["status"] == "paid" and "cardBrand" not in paid["payment"]
+
+
 def test_unpaid_counter_order_can_be_cancelled(staff, seated, phone):
     o = order(phone, [{"menuItemId": "gai-tod", "quantity": 1}]).json()["order"]
     cancelled = staff.post(f"/api/orders/{o['id']}/cancel").json()

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import type { CardBrand, OrderPayment } from '../demo/types'
 
 /** Current time, refreshed every `intervalMs` so elapsed times stay live */
 export function useNow(intervalMs = 15000): number {
@@ -27,4 +28,19 @@ export function sessionUrl(tableNumber: number, token: string): string {
   // The token goes after #: browsers never send that part to a server, a log or another site.
   // The guest page keeps it in the phone's storage and takes it out of the address (REQ-36).
   return `${base.replace(/\/$/, '')}/order?table=${tableNumber}#s=${encodeURIComponent(token)}`
+}
+
+export const CARD_BRAND_LABEL: Record<CardBrand, string> = {
+  visa: 'Visa',
+  mastercard: 'Mastercard',
+  amex: 'Amex',
+  eftpos: 'EFTPOS',
+  other: 'Other card',
+}
+
+/** How a paid order was paid: "on phone", "in cash", "by card (Visa)" */
+export function paidBy(p: OrderPayment): string {
+  if (p.method === 'stripe') return 'on phone'
+  if (p.method === 'cash') return 'in cash'
+  return p.cardBrand ? `by card (${CARD_BRAND_LABEL[p.cardBrand]})` : 'by card'
 }

@@ -87,6 +87,8 @@ export type OrderItem = {
 }
 
 export type PaymentMethod = 'stripe' | 'cash' | 'card_terminal'
+/** What the card terminal showed, for the record only */
+export type CardBrand = 'visa' | 'mastercard' | 'amex' | 'eftpos' | 'other'
 
 /**
  * Pay first: an order goes through only once paid.
@@ -95,8 +97,13 @@ export type PaymentMethod = 'stripe' | 'cash' | 'card_terminal'
  */
 export type OrderPayment = {
   status: 'awaiting_counter' | 'paid' | 'cancelled'
+  /** What was actually paid, after any discount; the bill was amount + discount */
   amount: number
   method?: PaymentMethod
+  /** Taken off at the counter, in cents */
+  discount?: number
+  /** Counter card payments only */
+  cardBrand?: CardBrand
   paidAt?: number
   cancelledAt?: number
   /** Stripe PaymentIntent id for phone payments */

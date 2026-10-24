@@ -11,6 +11,7 @@ Allergen = Literal["dairy", "peanuts", "tree-nuts", "shellfish", "egg"]
 ItemStatus = Literal["submitted", "served", "cancelled"]
 PaymentStatus = Literal["pending", "awaiting_counter", "paid", "cancelled"]
 PaymentMethod = Literal["stripe", "cash", "card_terminal"]
+CardBrand = Literal["visa", "mastercard", "amex", "eftpos", "other"]
 
 # A resized JPEG from the admin page is ~100-300 KB as a data URL (stored apart, see
 # app/services/photos.py); refuse anything silly
@@ -184,6 +185,9 @@ class OrderPaymentOut(Model):
     status: PaymentStatus
     amount: int
     method: PaymentMethod | None = None
+    # Taken off at the counter; amount is after it. Left out when there was none
+    discount: int | None = None
+    card_brand: CardBrand | None = None
     paid_at: int | None = None
     cancelled_at: int | None = None
     intent_id: str | None = None
@@ -243,6 +247,10 @@ class PaymentCheckOut(Model):
 
 class CounterPaymentIn(Model):
     method: Literal["cash", "card_terminal"]
+    # In cents, off the order's amount
+    discount: int = Field(default=0, ge=0)
+    # Card payments only, for the record
+    card_brand: CardBrand | None = None
 
 
 class ItemStatusIn(Model):

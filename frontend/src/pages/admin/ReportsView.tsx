@@ -228,6 +228,21 @@ function SalesView({
               </div>
             </div>
           </section>
+
+          <section className="card report-card cancelled-card">
+            <div className="row between">
+              <div>
+                <h2>Discounts</h2>
+                <p className="muted small">Taken off counter bills; revenue is already after them</p>
+              </div>
+              <div className="cancelled-figures">
+                <strong>{formatAUD(report.discounts.amount)}</strong>
+                <span className="muted small">
+                  {report.discounts.orders} {report.discounts.orders === 1 ? 'order' : 'orders'}
+                </span>
+              </div>
+            </div>
+          </section>
         </div>
       </div>
     </>

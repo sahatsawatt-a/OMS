@@ -1,7 +1,7 @@
 import { QRCodeSVG } from 'qrcode.react'
 import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { formatElapsed, formatTime, sessionUrl, useNow } from '../../components/format'
+import { CARD_BRAND_LABEL, formatElapsed, formatTime, paidBy, sessionUrl, useNow } from '../../components/format'
 import { Icon } from '../../components/Icon'
 import { Sheet, StatusBadge } from '../../components/shared'
 import { useMediaQuery } from '../../components/useMediaQuery'
@@ -9,7 +9,7 @@ import { SignOutButton } from '../../components/StaffGate'
 import { RESTAURANT_NAME } from '../../demo/mockData'
 import { formatAUD, gstIncluded } from '../../demo/money'
 import { actions, useDemoState } from '../../demo/store'
-import type { Order, Table, TableSession } from '../../demo/types'
+import type { CardBrand, Order, Table, TableSession } from '../../demo/types'
 import './staff.css'
 
 type TableView = {
@@ -32,6 +32,9 @@ export default function StaffPage() {
   const [opening, setOpening] = useState<Table | null>(null)
   const [qrFor, setQrFor] = useState<TableSession | null>(null)
   const [selected, setSelected] = useState<string | null>(null)
+  // The counter order being paid, by id so the sheet follows live updates
+  const [payingId, setPayingId] = useState<string | null>(null)
+  const paying = demo.orders.find((o) => o.id === payingId && o.payment.status === 'awaiting_counter')
 
   const views: TableView[] = useMemo(
     () =>
@@ -71,14 +74,9 @@ export default function StaffPage() {
             {o.device && ` · Phone ${o.device}`} · {formatAUD(o.payment.amount)} to pay at the counter ·{' '}
             {formatElapsed(o.createdAt, now)}
           </span>
-          <div className="row gap">
-            <button className="btn btn-sm" onClick={() => actions.confirmCounterPayment(o.id, 'card_terminal')}>
-              Card
-            </button>
-            <button className="btn btn-sm" onClick={() => actions.confirmCounterPayment(o.id, 'cash')}>
-              Cash
-            </button>
-          </div>
+          <button className="btn btn-sm" onClick={() => setPayingId(o.id)}>
+            Take payment
+          </button>
         </div>
       ))}
       {waiterCalls.map((a) => (
@@ -154,6 +152,7 @@ export default function StaffPage() {
             view={selectedView}
             attention={narrow ? 0 : attention}
             onShowQr={() => setQrFor(selectedView.session!)}
+            onTakePayment={(o) => setPayingId(o.id)}
             onClose={() => setSelected(null)}
           />
         ) : (
@@ -194,6 +193,7 @@ export default function StaffPage() {
       )}
 
       {qrFor && <QrSheet session={qrFor} onClose={() => setQrFor(null)} />}
+      {paying && <TakePaymentSheet order={paying} onClose={() => setPayingId(null)} />}
     </div>
   )
 }
@@ -226,6 +226,112 @@ function OpenSessionSheet({ table, onClose, onOpen }: { table: Table; onClose: (
           </button>
         ))}
       </div>
+    </Sheet>
+  )
+}
+
+const CARD_BRANDS: CardBrand[] = ['visa', 'mastercard', 'amex', 'eftpos', 'other']
+
+/** Take a counter payment: an optional discount ($ or %), cash or card, and the card brand for the record */
+function TakePaymentSheet({ order, onClose }: { order: Order; onClose: () => void }) {
+  const [unit, setUnit] = useState<'$' | '%'>('$')
+  const [value, setValue] = useState('')
+  const [method, setMethod] = useState<'card_terminal' | 'cash'>('card_terminal')
+  const [brand, setBrand] = useState<CardBrand | undefined>()
+  const [saving, setSaving] = useState(false)
+
+  const bill = order.payment.amount
+  const n = Number(value) || 0
+  const discount = Math.round(unit === '$' ? n * 100 : (bill * n) / 100)
+  const tooMuch = n < 0 || discount > bill
+  const toPay = bill - Math.max(0, discount)
+
+  return (
+    <Sheet
+      title={`Take payment · Order #${order.number} · Table ${order.tableNumber}`}
+      onClose={onClose}
+      footer={
+        <button
+          className="btn btn-primary btn-block"
+          disabled={saving || tooMuch}
+          onClick={async () => {
+            setSaving(true)
+            const ok = await actions.confirmCounterPayment(order.id, {
+              method,
+              discount: discount || undefined,
+              cardBrand: method === 'card_terminal' ? brand : undefined,
+            })
+            if (ok) onClose()
+            else setSaving(false)
+          }}
+        >
+          {saving ? 'Saving…' : `Confirm payment ${formatAUD(toPay)}`}
+        </button>
+      }
+    >
+      <div className="pay-bill">
+        <div className="row between">
+          <span>Bill</span>
+          <span>{formatAUD(bill)}</span>
+        </div>
+        <div className="field">
+          <span id="discount-label">Discount</span>
+          <div className="row gap">
+            <div className="choice-picker unit-picker" role="radiogroup" aria-label="Discount in">
+              {(['$', '%'] as const).map((u) => (
+                <button key={u} role="radio" aria-checked={unit === u} className={unit === u ? 'active' : ''} onClick={() => setUnit(u)}>
+                  {u}
+                </button>
+              ))}
+            </div>
+            <input
+              className="grow"
+              type="number"
+              inputMode="decimal"
+              min="0"
+              step={unit === '$' ? '0.01' : '1'}
+              placeholder="0"
+              value={value}
+              onChange={(e) => setValue(e.target.value)}
+              aria-labelledby="discount-label"
+            />
+          </div>
+        </div>
+        {tooMuch && <p className="pay-error small">The discount can't be more than the bill.</p>}
+        {discount > 0 && !tooMuch && (
+          <div className="row between muted">
+            <span>Discount</span>
+            <span>−{formatAUD(discount)}</span>
+          </div>
+        )}
+        <div className="row between total">
+          <span>To pay</span>
+          <span>{formatAUD(toPay)}</span>
+        </div>
+      </div>
+
+      <p className="muted">Paid by</p>
+      <div className="choice-picker" role="radiogroup" aria-label="Paid by">
+        <button role="radio" aria-checked={method === 'card_terminal'} className={method === 'card_terminal' ? 'active' : ''} onClick={() => setMethod('card_terminal')}>
+          <Icon name="card" size={16} /> Card
+        </button>
+        <button role="radio" aria-checked={method === 'cash'} className={method === 'cash' ? 'active' : ''} onClick={() => setMethod('cash')}>
+          <Icon name="cash" size={16} /> Cash
+        </button>
+      </div>
+
+      {method === 'card_terminal' && (
+        <>
+          <p className="muted">Card, for the record (optional)</p>
+          <div className="choice-picker" role="radiogroup" aria-label="Card brand">
+            {CARD_BRANDS.map((b) => (
+              <button key={b} role="radio" aria-checked={brand === b} className={brand === b ? 'active' : ''} onClick={() => setBrand(brand === b ? undefined : b)}>
+                {CARD_BRAND_LABEL[b]}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
     </Sheet>
   )
 }
@@ -275,12 +381,14 @@ function TableDetail({
   view,
   attention,
   onShowQr,
+  onTakePayment,
   onClose,
 }: {
   view: TableView
   /** Counter payments and waiter calls waiting elsewhere; closing the table shows them */
   attention: number
   onShowQr: () => void
+  onTakePayment: (o: Order) => void
   onClose: () => void
 }) {
   const session = view.session!
@@ -335,7 +443,7 @@ function TableDetail({
               </div>
               <div className={`order-pay-line pay-${o.payment.status}`}>
                 {o.payment.status === 'paid'
-                  ? `Paid ${o.payment.method === 'stripe' ? 'on phone' : o.payment.method === 'cash' ? 'in cash' : 'by card'} · ${formatAUD(o.payment.amount)}`
+                  ? `Paid ${paidBy(o.payment)} · ${formatAUD(o.payment.amount)}${o.payment.discount ? ` · ${formatAUD(o.payment.discount)} off` : ''}`
                   : o.payment.status === 'awaiting_counter'
                     ? `Waiting for payment at counter · ${formatAUD(o.payment.amount)}`
                     : 'Cancelled, not paid'}
@@ -370,11 +478,8 @@ function TableDetail({
               </ul>
               {o.payment.status === 'awaiting_counter' && (
                 <div className="row gap wrap order-actions">
-                  <button className="btn btn-sm btn-primary" onClick={() => actions.confirmCounterPayment(o.id, 'card_terminal')}>
-                    <Icon name="card" size={15} /> Paid by card
-                  </button>
-                  <button className="btn btn-sm btn-primary" onClick={() => actions.confirmCounterPayment(o.id, 'cash')}>
-                    <Icon name="cash" size={15} /> Paid in cash
+                  <button className="btn btn-sm btn-primary" onClick={() => onTakePayment(o)}>
+                    <Icon name="cash" size={15} /> Take payment
                   </button>
                   <button
                     className="btn btn-sm btn-ghost"
