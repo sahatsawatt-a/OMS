@@ -1,6 +1,8 @@
 import { QRCodeSVG } from 'qrcode.react'
 import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
+import { FloorPlan } from '../../components/FloorPlan'
+import { areasOf, placeTables } from '../../components/floorLayout'
 import { CARD_BRAND_LABEL, CARD_BRANDS, formatElapsed, formatTime, paidBy, sessionUrl, useNow } from '../../components/format'
 import { Icon } from '../../components/Icon'
 import { Sheet, StatusBadge } from '../../components/shared'
@@ -60,6 +62,31 @@ export default function StaffPage() {
   // Wide screens: alerts live in the side panel; phones: a compact list above the tables
   const narrow = useMediaQuery('(max-width: 820px)')
   const attention = counterPayments.length + waiterCalls.length
+
+  // The floor plan the admin drew (Admin > Tables), read-only here; phones start on the list
+  const [layout, setLayout] = useState<'plan' | 'list' | null>(() => {
+    try {
+      const saved = localStorage.getItem('oms-tables-view')
+      return saved === 'plan' || saved === 'list' ? saved : null
+    } catch {
+      return null
+    }
+  })
+  const showPlan = (layout ?? (narrow ? 'list' : 'plan')) === 'plan'
+  const chooseLayout = (next: 'plan' | 'list') => {
+    setLayout(next)
+    try {
+      localStorage.setItem('oms-tables-view', next)
+    } catch {
+      // Remembered until the page reloads
+    }
+  }
+  const areas = useMemo(() => areasOf(demo.tables, demo.fixtures), [demo.tables, demo.fixtures])
+  const [area, setArea] = useState<string | null>(null)
+  const currentArea = area && areas.includes(area) ? area : areas[0]
+  const placed = useMemo(() => placeTables(demo.tables, demo.fixtures), [demo.tables, demo.fixtures])
+  const viewOf = useMemo(() => new Map(views.map((v) => [v.table.id, v])), [views])
+  const tapTable = (v: TableView) => (v.session ? setSelected(v.session.token) : setOpening(v.table))
   const seated = views.filter((v) => v.session)
   const guests = seated.reduce((n, v) => n + (v.session?.guests ?? 0), 0)
 
@@ -111,14 +138,68 @@ export default function StaffPage() {
       <div className="staff-body">
         <div className="staff-main">
           {narrow && attention > 0 && attentionList}
-          <main className="table-grid">
+          <main className="staff-tables">
+          <div className="row between wrap staff-tables-bar">
+            {showPlan && areas.length > 1 ? (
+              <div className="floor-areas" role="tablist" aria-label="Areas">
+                {areas.map((a) => (
+                  <button key={a} role="tab" aria-selected={a === currentArea} className={a === currentArea ? 'active' : ''} onClick={() => setArea(a)}>
+                    {a}
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <span />
+            )}
+            <div className="segmented small-seg" role="group" aria-label="Show tables as">
+              <button className={showPlan ? 'active' : ''} aria-pressed={showPlan} onClick={() => chooseLayout('plan')}>
+                Floor plan
+              </button>
+              <button className={!showPlan ? 'active' : ''} aria-pressed={!showPlan} onClick={() => chooseLayout('list')}>
+                List
+              </button>
+            </div>
+          </div>
+          {showPlan ? (
+            <FloorPlan
+              tables={placed.flatMap((t) => (t.zone === currentArea ? [{ ...t, key: t.id }] : []))}
+              fixtures={demo.fixtures.flatMap((f, i) => (f.zone === currentArea ? [{ ...f, key: String(i) }] : []))}
+              tableClass={(t) => {
+                const v = viewOf.get(t.id)
+                return `state-${v?.state ?? 'free'} ${selected && v?.session?.token === selected ? 'selected' : ''}`
+              }}
+              tableLabel={(t) => {
+                const v = viewOf.get(t.id)
+                return `Table ${t.number}, ${STATE_LABEL[v?.state ?? 'free']}${v?.session ? `, ${v.session.guests} of ${t.seats} seats` : `, ${t.seats} seats`}`
+              }}
+              onTableClick={(t) => {
+                const v = viewOf.get(t.id)
+                if (v) tapTable(v)
+              }}
+              renderTable={(t) => {
+                const v = viewOf.get(t.id)
+                return (
+                  <>
+                    <span className="floor-number">{t.number}</span>
+                    <span className="floor-sub">{STATE_LABEL[v?.state ?? 'free']}</span>
+                    <span className="floor-sub">
+                      {v?.session
+                        ? `${v.session.guests}/${t.seats} · ${formatElapsed(v.session.openedAt, now).replace(' ago', '')}`
+                        : `${t.seats} seats`}
+                    </span>
+                  </>
+                )
+              }}
+            />
+          ) : (
+          <div className="table-grid">
           {views.map((v) => {
             const paid = paidTotal(v.orders)
             return (
               <button
                 key={v.table.id}
                 className={`table-card state-${v.state} ${selected && v.session?.token === selected ? 'selected' : ''}`}
-                onClick={() => (v.session ? setSelected(v.session.token) : setOpening(v.table))}
+                onClick={() => tapTable(v)}
               >
                 <div className="table-top">
                   <span className="table-number">{v.table.number}</span>
@@ -144,6 +225,8 @@ export default function StaffPage() {
               </button>
             )
           })}
+          </div>
+          )}
           </main>
         </div>
 

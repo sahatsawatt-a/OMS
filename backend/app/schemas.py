@@ -108,11 +108,66 @@ class CreatedId(Model):
 # ---- Tables and sessions ----
 
 
+# The floor plan's grid, per area: cells across and down
+FLOOR_COLS = 24
+FLOOR_ROWS = 16
+TableShape = Literal["square", "round"]
+
+
 class TableOut(Model):
     id: str
     number: int
     seats: int
     zone: str
+    # Floor plan: empty until the admin places the table
+    x: int | None = None
+    y: int | None = None
+    w: int = 2
+    h: int = 2
+    shape: TableShape = "square"
+
+
+class FixtureOut(Model):
+    """A landmark on the floor plan: the counter, the door, a window..."""
+
+    zone: str
+    label: str
+    x: int
+    y: int
+    w: int
+    h: int
+
+
+class _Placed(Model):
+    zone: str = Field(min_length=1, max_length=60)
+    x: int = Field(ge=0, lt=FLOOR_COLS)
+    y: int = Field(ge=0, lt=FLOOR_ROWS)
+    w: int = Field(ge=1, le=FLOOR_COLS)
+    h: int = Field(ge=1, le=FLOOR_ROWS)
+
+
+class FloorTableIn(_Placed):
+    # Left out for a new table
+    id: str | None = Field(default=None, max_length=16)
+    number: int = Field(ge=1, le=9999)
+    seats: int = Field(ge=1, le=50)
+    shape: TableShape = "square"
+
+
+class FixtureIn(_Placed):
+    label: str = Field(min_length=1, max_length=40)
+
+
+class FloorIn(Model):
+    """The whole floor plan as the admin saved it: every table and every landmark."""
+
+    tables: list[FloorTableIn] = Field(max_length=300)
+    fixtures: list[FixtureIn] = Field(default=[], max_length=300)
+
+
+class FloorOut(Model):
+    tables: list[TableOut]
+    fixtures: list[FixtureOut]
 
 
 class DeviceOut(Model):
@@ -265,6 +320,7 @@ class StaffState(Model):
     """Everything the front-of-house, admin and reports screens show."""
 
     tables: list[TableOut]
+    fixtures: list[FixtureOut] = []
     sessions: dict[str, SessionOut]
     orders: list[OrderOut]
     menu: MenuOut

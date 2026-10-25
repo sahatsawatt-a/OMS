@@ -50,6 +50,7 @@ def settings(monkeypatch):
     s = get_settings()
     monkeypatch.setattr(s, "staff_api_key", STAFF_KEY)
     monkeypatch.setattr(s, "browser_check_key", "")
+    monkeypatch.setattr(s, "admin_api_key", "")
     monkeypatch.setattr(s, "stripe_secret_key", "")
     monkeypatch.setattr(s, "stripe_publishable_key", "")
     monkeypatch.setattr(s, "stripe_webhook_secret", "")

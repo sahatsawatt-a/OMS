@@ -478,3 +478,57 @@
     grid-template-columns: 1fr;
   }
 }
+
+/* Tables: the floor plan editor (FloorEditor.tsx) */
+.floor-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.floor-editor-bar {
+  gap: 12px;
+}
+.floor-editor-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 280px;
+  gap: 16px;
+  align-items: start;
+}
+.floor-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+}
+.floor-panel h3 {
+  margin: 0;
+}
+.floor-panel select {
+  min-height: 40px;
+}
+/* Two rows: Wide − n +, Deep − n + */
+.floor-size {
+  display: grid;
+  grid-template-columns: 48px auto 32px auto;
+  align-items: center;
+  justify-items: center;
+  justify-content: start;
+  gap: 6px 8px;
+}
+.floor-size > span {
+  justify-self: start;
+}
+.floor-error {
+  margin: 0;
+  color: var(--danger);
+}
+.floor-remove {
+  align-self: flex-start;
+  color: var(--danger);
+}
+@media (max-width: 900px) {
+  .floor-editor-body {
+    grid-template-columns: 1fr;
+  }
+}
+

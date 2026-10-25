@@ -1,0 +1,139 @@
+/* The floor plan (components/FloorPlan.tsx): a 24 x 16 grid of cells, scaled to its width
+   but never so small that tables can't be read; narrower screens scroll it sideways */
+.floor-scroll {
+  overflow-x: auto;
+  border-radius: var(--radius);
+}
+.floor {
+  position: relative;
+  width: 100%;
+  min-width: 640px;
+  aspect-ratio: 24 / 16;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+.floor-editing {
+  touch-action: none;
+  background-image:
+    linear-gradient(to right, var(--border) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--border) 1px, transparent 1px);
+  background-size: calc(100% / 24) calc(100% / 16);
+}
+
+.floor-fixture,
+.floor-table {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  padding: 2px;
+  overflow: hidden;
+  font: inherit;
+  text-align: center;
+}
+
+/* Landmarks: quiet, so tables stand out */
+.floor-fixture {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  color: var(--muted);
+  font-size: 0.78rem;
+  letter-spacing: 0.02em;
+}
+.floor-fixture span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+}
+/* A long thin landmark (a wall of windows) reads top to bottom */
+.floor-fixture.tall span {
+  writing-mode: vertical-rl;
+  max-width: none;
+  max-height: 100%;
+}
+
+.floor-table {
+  background: var(--surface);
+  border: 2px solid var(--border-strong);
+  border-radius: 6px;
+  color: var(--text);
+  cursor: pointer;
+}
+.floor-table.shape-round {
+  border-radius: 50%;
+}
+.floor-table:focus-visible,
+.floor-fixture:focus-visible {
+  outline: 3px solid var(--text);
+  outline-offset: 2px;
+}
+.floor-editing .floor-table,
+.floor-editing .floor-fixture {
+  cursor: grab;
+  touch-action: none;
+}
+.floor-editing .floor-table:active,
+.floor-editing .floor-fixture:active {
+  cursor: grabbing;
+}
+.floor-table.selected,
+.floor-fixture.selected {
+  outline: 3px solid var(--text);
+  outline-offset: 2px;
+  z-index: 1;
+}
+
+.floor-number {
+  font-family: var(--font-display, inherit);
+  font-size: clamp(0.95rem, 2.2vw, 1.6rem);
+  font-weight: 600;
+  line-height: 1;
+}
+.floor-sub {
+  font-size: clamp(0.62rem, 1vw, 0.75rem);
+  color: var(--muted);
+  line-height: 1.2;
+  white-space: nowrap;
+}
+/* Small tables keep the number and the first line only, wrapped if need be */
+.floor-table {
+  container-type: size;
+}
+@container (max-width: 76px) {
+  .floor-sub {
+    white-space: normal;
+  }
+  .floor-sub ~ .floor-sub {
+    display: none;
+  }
+}
+
+/* Area tabs above the plan */
+.floor-areas {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.floor-areas button {
+  min-height: 36px;
+  padding: 0 14px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--muted);
+  font: inherit;
+  font-size: 0.88rem;
+  font-weight: 500;
+  cursor: pointer;
+}
+.floor-areas button.active {
+  border-color: var(--text);
+  background: var(--text);
+  color: var(--bg);
+}

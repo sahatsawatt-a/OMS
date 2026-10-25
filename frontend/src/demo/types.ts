@@ -1,11 +1,30 @@
 // Domain types shared by the screens. The backend API (backend/app/schemas.py) returns
 // exactly these shapes: camelCase, money in cents, times in epoch milliseconds.
 
+export type TableShape = 'square' | 'round'
+
 export type Table = {
   id: string
   number: number
   seats: number
+  /** The area of the floor plan it is in (e.g. Main, Terrace) */
   zone: string
+  /** Floor plan, in cells of the area's grid; x/y missing until the admin places it */
+  x?: number
+  y?: number
+  w: number
+  h: number
+  shape: TableShape
+}
+
+/** A landmark on the floor plan (the counter, the door) that helps staff find tables */
+export type FloorFixture = {
+  zone: string
+  label: string
+  x: number
+  y: number
+  w: number
+  h: number
 }
 
 export type OptionChoice = {
@@ -171,6 +190,7 @@ export type TableSession = {
 /** What the staff screens show (GET /api/staff/state) */
 export type DemoState = {
   tables: Table[]
+  fixtures: FloorFixture[]
   sessions: Record<string, TableSession>
   orders: Order[]
   soldOut: string[]

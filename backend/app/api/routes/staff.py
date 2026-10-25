@@ -10,9 +10,10 @@ from sqlalchemy.orm import Session
 from app.core.clock import utcnow
 from app.core.security import require_staff
 from app.db.session import get_db
-from app.models import DiningTable, Order, TableSession
+from app.models import DiningTable, FloorFixture, Order, TableSession
 from app.schemas import (
     CounterPaymentIn,
+    FixtureOut,
     ItemStatusIn,
     OpenSessionIn,
     OrderOut,
@@ -46,8 +47,10 @@ def staff_state(
     tables = db.scalars(select(DiningTable).order_by(DiningTable.number)).all()
     sessions = staff_sessions(db, since=utcnow() - timedelta(days=days))
     orders = staff_orders(db, [s.id for s in sessions])
+    fixtures = db.scalars(select(FloorFixture).order_by(FloorFixture.id)).all()
     return StaffState(
         tables=[table_out(t) for t in tables],
+        fixtures=[FixtureOut.model_validate(f) for f in fixtures],
         sessions={s.token: session_out(s) for s in sessions},
         orders=[order_out(o) for o in orders],
         menu=menu_out(db, include_hidden=True),
