@@ -9,9 +9,11 @@ from app.models.menu import (
     OptionGroup,
 )
 from app.models.orders import Order, OrderItem
+from app.models.settings import AppSetting
 from app.models.tables import DiningTable, TableDevice, TableSession
 
 __all__ = [
+    "AppSetting",
     "Base",
     "DiningTable",
     "MenuCategory",

@@ -12,7 +12,7 @@ import { BookMenu, FeedMenu } from './templates'
 import { useDesign } from '../../components/design'
 import { useStripeRedirectReturn } from './stripe'
 import { guestActions, randomToken, useGuestState, useRefreshOnFocus } from '../../demo/store'
-import type { CartLine, GuestSession as Session, MenuData, MenuItem, Order, SelectedOption } from '../../demo/types'
+import type { CartLine, GuestSession as Session, MenuData, MenuItem, Order, PhotoCredit, SelectedOption } from '../../demo/types'
 import { forgetDevice, useGuestAccess } from '../../lib/guest'
 import './customer.css'
 
@@ -490,6 +490,22 @@ function MenuItemRow({ item, soldOut, onPick }: { item: MenuItem; soldOut: boole
   )
 }
 
+/** Open-source photos show a dish like it, not the restaurant's own; their licences ask for credit */
+function PhotoCreditLine({ credit }: { credit: PhotoCredit }) {
+  return (
+    <p className="photo-credit">
+      Similar dish, not our own photo.{' '}
+      <a href={credit.source} target="_blank" rel="noreferrer">
+        Photo
+      </a>{' '}
+      by {credit.author},{' '}
+      <a href={credit.licenseUrl} target="_blank" rel="noreferrer">
+        {credit.license}
+      </a>
+    </p>
+  )
+}
+
 function ItemSheet({ item, onClose, onAdd }: { item: MenuItem; onClose: () => void; onAdd: (l: CartLine) => void }) {
   const groups = item.optionGroups ?? []
   const [qty, setQty] = useState(1)
@@ -539,6 +555,7 @@ function ItemSheet({ item, onClose, onAdd }: { item: MenuItem; onClose: () => vo
       }
     >
       {item.image && <img className="item-hero" src={item.image} alt={item.name} />}
+      {item.imageCredit && <PhotoCreditLine credit={item.imageCredit} />}
       {(item.number || item.nameTh) && (
         <div className="item-names">
           {item.number && <span className="item-number">No. {item.number}</span>}

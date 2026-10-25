@@ -38,6 +38,9 @@ Status: draft. Requirements marked *assumption* and the open questions in sectio
 - **RQ-22:** "we planning to make it pay right at order" *(clarifying: keep "Pay at counter" as a choice, or phone payment only?)*
 - **RQ-23:** "the ui you did was a theme color. I want a different UI design, diff template."
 - **RQ-24 / RQ-25:** "this part also feel weird" / "this feel weird" (Front of house alerts layout; guest menu section bar)
+- **RQ-32:** "find img for menu"
+- **RQ-33:** "make it able to set a checkbox for enable use yt real menu with external opensource img or only one of them where yt  real menu can have those that still not have img yet while opensource option should have all. when both choose opensouce only replace the missing one"
+- **RQ-34:** "use the same angle that yt use"
 
 ## 2. The flow
 
@@ -117,6 +120,8 @@ Priority: **H** first release, **N** normal, **L** later.
 
 ### Administration
 **REQ-26 Admins manage the menu (H)** — sections, dishes, Thai names, dish numbers, prices, photos, option groups, labels; dishes in past orders are hidden, never deleted. Table editing not built yet.
+
+**REQ-38 Admins choose which dish photos guests see (N)** — from RQ-32, RQ-33, RQ-34. Two checkboxes on the admin Menu page: restaurant photos (cut from the printed menu, or uploaded; 44 of 92 dishes) and open-source photos (Wikimedia Commons, one for every printed-menu dish, picked to match the printed menu's 45° angle and cropped to the same shape). Both: the restaurant's photo where there is one, open-source for the rest; neither: text only. Open-source photos are credited on the guest item sheet ("Similar dish, not our own photo") and in `frontend/public/menu/open/CREDITS.md`. Default: restaurant photos only.
 
 **REQ-28 Staff log in with roles; diners need no account (H)** — partly: one shared staff key (and a separate, revocable key for automated checks); per-person logins and roles still to do.
 

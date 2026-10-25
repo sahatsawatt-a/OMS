@@ -6,15 +6,25 @@ import { ALLERGEN_LABEL, DIETARY_LABEL } from '../../demo/dietary'
 import { RESTAURANT_NAME } from '../../demo/mockData'
 import { formatAUD } from '../../demo/money'
 import { actions, newMenuItemId, useDemoState } from '../../demo/store'
-import type { Allergen, DietaryTag, MenuCategory, MenuItem, OptionGroup } from '../../demo/types'
+import type { Allergen, DietaryTag, MenuCategory, MenuItem, OptionGroup, PhotoSources } from '../../demo/types'
 import ReportsView from './ReportsView'
 import './admin.css'
 
 const ALL = 'all'
 
+const DEFAULT_SOURCES: PhotoSources = { restaurant: true, openSource: false }
+
+/** The photo guests see for a dish, as the server picks it (backend/app/services/photo_sources.py) */
+function guestPhoto(m: MenuItem, sources: PhotoSources): { url: string; open: boolean } | null {
+  if (sources.restaurant && m.image) return { url: m.image, open: false }
+  if (sources.openSource && m.openPhoto) return { url: m.openPhoto.url, open: true }
+  return null
+}
+
 export default function AdminPage() {
   const demo = useDemoState()
   const { categories, items } = demo.menu
+  const sources = demo.menu.photoSources ?? DEFAULT_SOURCES
   const [selected, setSelected] = useState<string>(ALL)
   const [query, setQuery] = useState('')
   const [editing, setEditing] = useState<MenuItem | 'new' | null>(null)
@@ -142,6 +152,8 @@ export default function AdminPage() {
               )}
             </div>
 
+            <PhotoSourcesPanel items={items} sources={sources} />
+
             <div className="admin-toolbar">
               <label className="admin-search">
                 <Icon name="search" size={17} />
@@ -161,7 +173,7 @@ export default function AdminPage() {
                   return (
                     <li key={m.id} className={`admin-row ${m.hidden ? 'is-hidden' : ''}`}>
                       <button className="admin-row-main" onClick={() => setEditing(m)}>
-                        {m.image ? <img src={m.image} alt="" loading="lazy" /> : <span className="no-photo"><Icon name="image" size={18} /></span>}
+                        <RowPhoto photo={guestPhoto(m, sources)} />
                         <span className="admin-row-text">
                           <span className="admin-row-name">
                             {m.name}
@@ -227,6 +239,7 @@ export default function AdminPage() {
           wasOrdered={editing !== 'new' && ordered.has(editing.id)}
           optionGroups={demo.menu.optionGroups ?? []}
           photos={photos}
+          sources={sources}
           onClose={() => setEditing(null)}
           onSaved={(name, isNew) => {
             setEditing(null)
@@ -259,6 +272,75 @@ export default function AdminPage() {
         </div>
       )}
     </div>
+  )
+}
+
+function RowPhoto({ photo }: { photo: { url: string; open: boolean } | null }) {
+  if (!photo)
+    return (
+      <span className="no-photo" title="Guests see no photo">
+        <Icon name="image" size={18} />
+      </span>
+    )
+  return (
+    <span className="row-photo" title={photo.open ? 'Open-source photo (a similar dish)' : 'Restaurant photo'}>
+      <img src={photo.url} alt="" loading="lazy" />
+      {photo.open && <span className="row-photo-badge">Open</span>}
+    </span>
+  )
+}
+
+/** Which photos guests see: the restaurant's own, open-source stand-ins, or both */
+function PhotoSourcesPanel({ items, sources }: { items: MenuItem[]; sources: PhotoSources }) {
+  const [saving, setSaving] = useState(false)
+  const listed = items.filter((m) => !m.hidden)
+  const own = listed.filter((m) => m.image).length
+  const open = listed.filter((m) => m.openPhoto).length
+  const shown = listed.filter((m) => guestPhoto(m, sources)).length
+  const filled = sources.restaurant && sources.openSource ? listed.filter((m) => !m.image && m.openPhoto).length : 0
+
+  const change = async (next: PhotoSources) => {
+    setSaving(true)
+    await actions.setPhotoSources(next)
+    setSaving(false)
+  }
+
+  return (
+    <fieldset className="photo-sources" disabled={saving}>
+      <legend>Photos on the guest menu</legend>
+      <div className="photo-sources-options">
+        <label className="check">
+          <input type="checkbox" checked={sources.restaurant} onChange={(e) => change({ ...sources, restaurant: e.target.checked })} />
+          <span>
+            Restaurant photos
+            <span className="muted small">
+              {' '}
+              · from the printed menu and uploads, {own} of {listed.length} dishes
+            </span>
+          </span>
+        </label>
+        <label className="check">
+          <input type="checkbox" checked={sources.openSource} onChange={(e) => change({ ...sources, openSource: e.target.checked })} />
+          <span>
+            Open-source photos
+            <span className="muted small">
+              {' '}
+              · similar dishes from Wikimedia Commons, credited on the menu, {open} of {listed.length} dishes
+            </span>
+          </span>
+        </label>
+      </div>
+      <p className="muted small photo-sources-result">
+        {sources.restaurant && sources.openSource
+          ? `Restaurant photos first; open-source photos fill the ${filled} dishes without one. `
+          : sources.openSource
+            ? 'Open-source photos only, for every dish that has one. '
+            : sources.restaurant
+              ? 'Restaurant photos only; dishes without one show no photo. '
+              : 'No photos: guests see a text-only menu. '}
+        Guests see a photo on {shown} of {listed.length} dishes.
+      </p>
+    </fieldset>
   )
 }
 
@@ -308,6 +390,14 @@ function resizePhoto(file: File, maxSide = 800): Promise<string> {
   })
 }
 
+/** What the guest menu shows for a dish being edited, with its own photo set to `image` */
+function guestSees(image: string, openPhoto: MenuItem['openPhoto'], sources: PhotoSources): string {
+  const photo = guestPhoto({ image: image || undefined, openPhoto } as MenuItem, sources)
+  if (!photo) return 'Guests see no photo for this dish.'
+  if (!photo.open) return 'Guests see this photo.'
+  return `Guests see an open-source photo of a similar dish (${openPhoto!.author}, ${openPhoto!.license}), set under Photos on the guest menu.`
+}
+
 function ItemEditor({
   item,
   categories,
@@ -316,6 +406,7 @@ function ItemEditor({
   wasOrdered,
   optionGroups,
   photos,
+  sources,
   onClose,
   onSaved,
   onDeleted,
@@ -328,6 +419,7 @@ function ItemEditor({
   optionGroups: OptionGroup[]
   /** The restaurant's own dish photos, to reuse on another dish */
   photos: { name: string; url: string }[]
+  sources: PhotoSources
   onClose: () => void
   onSaved: (name: string, isNew: boolean) => void
   onDeleted: (name: string) => void
@@ -446,6 +538,7 @@ function ItemEditor({
               </button>
             )}
           </div>
+          <p className="muted small">{guestSees(image, item?.openPhoto, sources)}</p>
           <input
             ref={fileInput}
             type="file"

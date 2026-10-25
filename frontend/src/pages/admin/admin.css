@@ -131,6 +131,31 @@
   padding: 6px 8px;
 }
 
+.photo-sources {
+  margin: 16px 0 0;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+.photo-sources legend {
+  padding: 0 6px;
+  font-weight: 600;
+  font-size: 0.86rem;
+}
+.photo-sources-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 24px;
+}
+.photo-sources-options .check {
+  flex: 1 1 260px;
+}
+.photo-sources-result {
+  margin: 6px 0 0;
+}
+.photo-sources:disabled {
+  opacity: 0.6;
+}
 .admin-toolbar {
   display: flex;
   gap: 12px;
@@ -200,6 +225,23 @@
 }
 .admin-row-main:hover .admin-row-name {
   text-decoration: underline;
+}
+.row-photo {
+  position: relative;
+  flex-shrink: 0;
+  line-height: 0;
+}
+.row-photo-badge {
+  position: absolute;
+  left: 3px;
+  bottom: 3px;
+  padding: 1px 4px;
+  border-radius: 3px;
+  font-size: 0.6rem;
+  line-height: 1.3;
+  font-weight: 600;
+  color: #fff;
+  background: rgba(0, 0, 0, 0.62);
 }
 .admin-row-main img,
 .no-photo {

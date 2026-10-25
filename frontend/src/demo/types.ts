@@ -44,8 +44,15 @@ export type MenuItem = {
   description: string
   /** Price in cents */
   price: number
-  /** Photo URL; the demo menu has none and shows a text-only layout */
+  /**
+   * Guest menu: the photo to show, picked by the photo settings. Staff menu (admin page): the
+   * dish's own photo, as saved.
+   */
   image?: string
+  /** Guest menu: set when the photo shown is an open-source one, which must be credited */
+  imageCredit?: PhotoCredit
+  /** Staff menu: the dish's open-source stand-in photo, if it has one */
+  openPhoto?: PhotoCredit & { url: string }
   recommended?: boolean
   optionGroups?: OptionGroup[]
   dietary?: DietaryTag[]
@@ -54,12 +61,32 @@ export type MenuItem = {
   hidden?: boolean
 }
 
+/** Who took an open-source photo, and its licence */
+export type PhotoCredit = {
+  author: string
+  license: string
+  licenseUrl: string
+  source: string
+}
+
+/**
+ * Which dish photos guests see. Both: the restaurant's own where there is one, open-source for
+ * the rest. Open-source only: every printed-menu dish. Neither: a text-only menu.
+ */
+export type PhotoSources = {
+  /** Cut from the printed menu, or uploaded on the admin page */
+  restaurant: boolean
+  /** From Wikimedia Commons */
+  openSource: boolean
+}
+
 export type MenuData = {
   categories: MenuCategory[]
   items: MenuItem[]
   /** Option groups an admin can attach to a dish */
   optionGroups?: OptionGroup[]
   soldOut?: string[]
+  photoSources?: PhotoSources
 }
 
 export type SelectedOption = {

@@ -9,8 +9,18 @@ from sqlalchemy.orm import Session
 from app.core.security import require_staff
 from app.db.session import get_db
 from app.models import MenuCategory, MenuItem, MenuPhoto, OptionGroup, OrderItem
-from app.schemas import CategoryIn, CreatedId, FlagIn, MenuItemIn, MenuItemOut, MenuOut, MoveIn
+from app.schemas import (
+    CategoryIn,
+    CreatedId,
+    FlagIn,
+    MenuItemIn,
+    MenuItemOut,
+    MenuOut,
+    MoveIn,
+    PhotoSources,
+)
 from app.seed import reset_menu, set_option_groups
+from app.services.photo_sources import set_photo_sources
 from app.services.photos import store_photo
 from app.services.views import item_out, menu_out
 
@@ -169,6 +179,14 @@ def delete_category(category_id: str, db: Session = Depends(get_db)) -> dict[str
     db.delete(category)
     db.commit()
     return {"ok": True}
+
+
+@staff.put("/photo-sources")
+def save_photo_sources(body: PhotoSources, db: Session = Depends(get_db)) -> PhotoSources:
+    """Which photos the guest menu shows: the restaurant's own, open-source ones, or both."""
+    set_photo_sources(db, body)
+    db.commit()
+    return body
 
 
 @staff.post("/reset")
