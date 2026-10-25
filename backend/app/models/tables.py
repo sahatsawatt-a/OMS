@@ -13,6 +13,26 @@ class DiningTable(Base):
     number: Mapped[int] = mapped_column(Integer, unique=True)
     seats: Mapped[int] = mapped_column(Integer)
     zone: Mapped[str] = mapped_column(String(60), default="")
+    # Floor plan (Admin > Tables): cells of the area's grid, top left; empty until placed
+    x: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    y: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    w: Mapped[int] = mapped_column(Integer, default=2)
+    h: Mapped[int] = mapped_column(Integer, default=2)
+    shape: Mapped[str] = mapped_column(String(10), default="square")
+
+
+class FloorFixture(Base):
+    """A landmark on the floor plan (the counter, the door, a window) so staff find tables."""
+
+    __tablename__ = "floor_fixtures"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    zone: Mapped[str] = mapped_column(String(60))
+    label: Mapped[str] = mapped_column(String(40))
+    x: Mapped[int] = mapped_column(Integer)
+    y: Mapped[int] = mapped_column(Integer)
+    w: Mapped[int] = mapped_column(Integer)
+    h: Mapped[int] = mapped_column(Integer)
 
 
 class TableSession(Base):

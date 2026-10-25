@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Response
 from sqlalchemy import exists, func, select
 from sqlalchemy.orm import Session
 
-from app.core.security import require_staff
+from app.core.security import require_admin, require_staff
 from app.db.session import get_db
 from app.models import MenuCategory, MenuItem, MenuPhoto, OptionGroup, OrderItem
 from app.schemas import CategoryIn, CreatedId, FlagIn, MenuItemIn, MenuItemOut, MenuOut, MoveIn
@@ -15,7 +15,9 @@ from app.services.photos import store_photo
 from app.services.views import item_out, menu_out
 
 router = APIRouter(prefix="/menu", tags=["menu"])
-staff = APIRouter(prefix="/menu", tags=["menu admin"], dependencies=[Depends(require_staff)])
+# Changing the menu is for admins; marking a dish sold out during service is for any staff
+admin = APIRouter(prefix="/menu", tags=["menu admin"], dependencies=[Depends(require_admin)])
+staff = APIRouter(prefix="/menu", tags=["menu"], dependencies=[Depends(require_staff)])
 
 ID_PATTERN = r"^[a-z0-9][a-z0-9-]{0,63}$"
 
@@ -44,7 +46,7 @@ def get_photo(photo_id: str, db: Session = Depends(get_db)) -> Response:
     )
 
 
-@staff.get("/all", response_model_exclude_none=True)
+@admin.get("/all", response_model_exclude_none=True)
 def get_full_menu(db: Session = Depends(get_db)) -> MenuOut:
     return menu_out(db, include_hidden=True)
 
@@ -56,7 +58,7 @@ def _get_item(db: Session, item_id: str) -> MenuItem:
     return item
 
 
-@staff.put("/items/{item_id}", response_model_exclude_none=True)
+@admin.put("/items/{item_id}", response_model_exclude_none=True)
 def save_item(item_id: str, body: MenuItemIn, db: Session = Depends(get_db)) -> MenuItemOut:
     """Add a dish, or replace the one with this id."""
     if not re.match(ID_PATTERN, item_id):
@@ -93,7 +95,7 @@ def save_item(item_id: str, body: MenuItemIn, db: Session = Depends(get_db)) -> 
     return item_out(item)
 
 
-@staff.put("/items/{item_id}/hidden")
+@admin.put("/items/{item_id}/hidden")
 def set_hidden(item_id: str, body: FlagIn, db: Session = Depends(get_db)) -> dict[str, bool]:
     _get_item(db, item_id).hidden = body.value
     db.commit()
@@ -107,7 +109,7 @@ def set_sold_out(item_id: str, body: FlagIn, db: Session = Depends(get_db)) -> d
     return {"ok": True}
 
 
-@staff.delete("/items/{item_id}")
+@admin.delete("/items/{item_id}")
 def delete_item(item_id: str, db: Session = Depends(get_db)) -> dict[str, bool]:
     """Only dishes that were never ordered; others are hidden instead (orders keep history)."""
     item = _get_item(db, item_id)
@@ -120,7 +122,7 @@ def delete_item(item_id: str, db: Session = Depends(get_db)) -> dict[str, bool]:
     return {"ok": True}
 
 
-@staff.post("/categories")
+@admin.post("/categories")
 def add_category(body: CategoryIn, db: Session = Depends(get_db)) -> CreatedId:
     category_id = f"{slug(body.name) or 'category'}-{secrets.token_hex(2)}"
     last = db.scalar(select(func.max(MenuCategory.sort_order))) or 0
@@ -136,7 +138,7 @@ def _get_category(db: Session, category_id: str) -> MenuCategory:
     return category
 
 
-@staff.patch("/categories/{category_id}")
+@admin.patch("/categories/{category_id}")
 def rename_category(
     category_id: str, body: CategoryIn, db: Session = Depends(get_db)
 ) -> dict[str, bool]:
@@ -145,7 +147,7 @@ def rename_category(
     return {"ok": True}
 
 
-@staff.post("/categories/{category_id}/move")
+@admin.post("/categories/{category_id}/move")
 def move_category(category_id: str, body: MoveIn, db: Session = Depends(get_db)) -> dict[str, bool]:
     ordered = list(db.scalars(select(MenuCategory).order_by(MenuCategory.sort_order)).all())
     i = next((n for n, c in enumerate(ordered) if c.id == category_id), None)
@@ -160,7 +162,7 @@ def move_category(category_id: str, body: MoveIn, db: Session = Depends(get_db))
     return {"ok": True}
 
 
-@staff.delete("/categories/{category_id}")
+@admin.delete("/categories/{category_id}")
 def delete_category(category_id: str, db: Session = Depends(get_db)) -> dict[str, bool]:
     """Only empty categories."""
     category = _get_category(db, category_id)
@@ -171,7 +173,7 @@ def delete_category(category_id: str, db: Session = Depends(get_db)) -> dict[str
     return {"ok": True}
 
 
-@staff.post("/reset")
+@admin.post("/reset")
 def reset(db: Session = Depends(get_db)) -> dict[str, bool]:
     """Put the sample menu back; sold-out marks are cleared."""
     reset_menu(db)

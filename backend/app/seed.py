@@ -14,6 +14,7 @@ from app.core.clock import utcnow
 from app.menu_data import CATEGORIES, DEFAULT_SOLD_OUT, DISHES, OPTION_GROUPS
 from app.models import (
     DiningTable,
+    FloorFixture,
     MenuCategory,
     MenuItem,
     MenuItemOptionGroup,
@@ -26,21 +27,37 @@ from app.models import (
 )
 from app.services.orders import make_visible, token
 
+# (id, number, seats, area, x, y, w, h, shape): x/y/w/h are cells of the floor plan's grid
 TABLES = [
-    ("t1", 1, 2, "Window"),
-    ("t2", 2, 2, "Window"),
-    ("t3", 3, 4, "Main"),
-    ("t4", 4, 4, "Main"),
-    ("t5", 5, 4, "Main"),
-    ("t6", 6, 6, "Main"),
-    ("t7", 7, 8, "Terrace"),
-    ("t8", 8, 4, "Terrace"),
+    ("t1", 1, 2, "Window", 3, 3, 2, 2, "round"),
+    ("t2", 2, 2, "Window", 3, 8, 2, 2, "round"),
+    ("t3", 3, 4, "Main", 3, 3, 3, 2, "square"),
+    ("t4", 4, 4, "Main", 9, 3, 3, 2, "square"),
+    ("t5", 5, 4, "Main", 3, 8, 3, 2, "square"),
+    ("t6", 6, 6, "Main", 9, 8, 3, 3, "round"),
+    ("t7", 7, 8, "Terrace", 3, 4, 6, 2, "square"),
+    ("t8", 8, 4, "Terrace", 12, 4, 3, 2, "square"),
+]
+# (area, label, x, y, w, h)
+FIXTURES = [
+    ("Window", "Window", 0, 0, 1, 16),
+    ("Main", "Counter", 16, 2, 6, 2),
+    ("Main", "Door", 22, 12, 2, 3),
+    ("Main", "Kitchen", 16, 6, 6, 3),
+    ("Terrace", "Garden", 3, 10, 12, 4),
 ]
 
 
 def seed_tables(db: Session) -> None:
-    for id_, number, seats, zone in TABLES:
-        db.merge(DiningTable(id=id_, number=number, seats=seats, zone=zone))
+    for id_, number, seats, zone, x, y, w, h, shape in TABLES:
+        db.merge(
+            DiningTable(
+                id=id_, number=number, seats=seats, zone=zone, x=x, y=y, w=w, h=h, shape=shape
+            )
+        )
+    if not db.scalar(select(func.count()).select_from(FloorFixture)):
+        for zone, label, x, y, w, h in FIXTURES:
+            db.add(FloorFixture(zone=zone, label=label, x=x, y=y, w=w, h=h))
 
 
 def _get_or_add(db: Session, model, key, **fields):
@@ -155,7 +172,10 @@ def seed_service(db: Session) -> None:
         return now - timedelta(minutes=minutes)
 
     def seat(number: int, guests: int, minutes_ago: float, closed_minutes_ago=None, waiter=None):
-        t = tables[number]
+        # A sample table the admin has since removed is skipped
+        t = tables.get(number)
+        if t is None:
+            return None
         s = TableSession(
             token=token(),
             table_id=t.id,
@@ -198,6 +218,8 @@ def seed_service(db: Session) -> None:
     placed: list[tuple] = []
 
     def order(session, minutes_ago, pay, items, card=None):
+        if session is None:
+            return
         # card: the card type for card payments (REQ-39)
         placed.append((session, minutes_ago, pay, items, card))
 

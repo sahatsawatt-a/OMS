@@ -68,3 +68,54 @@ def test_browser_check_key_also_works_and_can_be_revoked(client, settings):
     assert client.get("/api/staff/check", headers={"X-Staff-Key": "check-key"}).status_code == 200
     settings.browser_check_key = ""
     assert client.get("/api/staff/check", headers={"X-Staff-Key": "check-key"}).status_code == 401
+
+
+# ---- Admin key (staff can't change the menu or the floor plan) ----
+
+ADMIN_ENDPOINTS = [
+    ("get", "/api/admin/check"),
+    ("get", "/api/menu/all"),
+    ("put", "/api/menu/items/pad-thai"),
+    ("put", "/api/menu/items/pad-thai/hidden"),
+    ("delete", "/api/menu/items/pad-thai"),
+    ("post", "/api/menu/categories"),
+    ("post", "/api/menu/reset"),
+    ("put", "/api/floor"),
+]
+
+
+@pytest.mark.parametrize(("method", "path"), ADMIN_ENDPOINTS)
+def test_staff_key_cannot_use_admin_endpoints(client, settings, method, path):
+    settings.admin_api_key = "admin-key"
+    res = getattr(client, method)(path, headers={"X-Staff-Key": "test-staff-key"})
+    assert res.status_code == 403
+    assert getattr(client, method)(path).status_code == 401
+
+
+def test_staff_key_still_works_for_front_of_house(client, settings):
+    settings.admin_api_key = "admin-key"
+    headers = {"X-Staff-Key": "test-staff-key"}
+    assert client.get("/api/staff/state", headers=headers).status_code == 200
+    # Marking a dish sold out during service is a staff job
+    res = client.put("/api/menu/items/pad-thai/sold-out", headers=headers, json={"value": True})
+    assert res.status_code == 200
+
+
+def test_admin_key_opens_both(client, settings):
+    settings.admin_api_key = "admin-key"
+    headers = {"X-Staff-Key": "admin-key"}
+    assert client.get("/api/admin/check", headers=headers).status_code == 200
+    assert client.get("/api/staff/state", headers=headers).status_code == 200
+    assert client.get("/api/menu/all", headers=headers).status_code == 200
+
+
+def test_without_an_admin_key_the_staff_key_opens_admin(client, settings):
+    settings.admin_api_key = ""
+    res = client.get("/api/admin/check", headers={"X-Staff-Key": "test-staff-key"})
+    assert res.status_code == 200
+
+
+def test_browser_check_key_can_do_admin_checks(client, settings):
+    settings.admin_api_key = "admin-key"
+    settings.browser_check_key = "check-key"
+    assert client.get("/api/admin/check", headers={"X-Staff-Key": "check-key"}).status_code == 200

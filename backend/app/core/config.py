@@ -16,6 +16,9 @@ class Settings(BaseSettings):
     staff_api_key: str = ""
     # A second staff key for automated browser checks, so it can be revoked on its own
     browser_check_key: str = ""
+    # Shared secret for the admin screens (menu, floor plan, reports), sent in the same header.
+    # Empty: the staff key still opens them, as before it existed
+    admin_api_key: str = ""
     # Demo extras: reset/clear sample data, simulated payments when Stripe has no keys
     demo_mode: bool = True
     # Order numbers restart each day in the restaurant's time zone

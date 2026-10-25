@@ -7,7 +7,7 @@ import { useEffect, useSyncExternalStore } from 'react'
 import { api, ApiError, currentStaffKey, onStaffKeyChange } from '../lib/api'
 import { onLiveChange } from '../lib/live'
 import { shortId } from './ids'
-import type { CardBrand, CartLine, DemoState, GuestState, ItemStatus, MenuItem, Order, PaymentMethod, TableSession } from './types'
+import type { CardBrand, CartLine, DemoState, FloorFixture, GuestState, ItemStatus, MenuItem, Order, PaymentMethod, Table, TableSession } from './types'
 
 export { randomToken } from './ids'
 
@@ -338,6 +338,11 @@ export const actions = {
 
   toggleSoldOut(menuItemId: string) {
     return actions.setSoldOut(menuItemId, !staffSnapshot?.soldOut.includes(menuItemId))
+  },
+
+  /** Admin: save the whole floor plan (tables and landmarks); true once saved */
+  async saveFloor(tables: (Omit<Table, 'id'> & { id?: string })[], fixtures: FloorFixture[]): Promise<boolean> {
+    return (await run(() => put('/floor', { tables, fixtures }))) !== null
   },
 
   /** Demo: back to the sample tables and orders; the menu is kept */

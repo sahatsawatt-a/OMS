@@ -7,6 +7,7 @@ import { RESTAURANT_NAME } from '../../demo/mockData'
 import { formatAUD } from '../../demo/money'
 import { actions, newMenuItemId, useDemoState } from '../../demo/store'
 import type { Allergen, DietaryTag, MenuCategory, MenuItem, OptionGroup } from '../../demo/types'
+import FloorEditor from './FloorEditor'
 import ReportsView from './ReportsView'
 import './admin.css'
 
@@ -21,7 +22,7 @@ export default function AdminPage() {
   const [categorySheet, setCategorySheet] = useState<MenuCategory | 'new' | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const [params, setParams] = useSearchParams()
-  const tab = params.get('tab') === 'reports' ? 'reports' : 'menu'
+  const tab = params.get('tab') === 'reports' ? 'reports' : params.get('tab') === 'tables' ? 'tables' : 'menu'
 
   const category = categories.find((c) => c.id === selected)
   const ordered = useMemo(() => new Set(demo.orders.flatMap((o) => o.items.map((i) => i.menuItemId))), [demo.orders])
@@ -68,9 +69,20 @@ export default function AdminPage() {
         >
           Reports
         </button>
+        <button
+          className={tab === 'tables' ? 'active' : ''}
+          aria-current={tab === 'tables' ? 'page' : undefined}
+          onClick={() => setParams({ tab: 'tables' })}
+        >
+          Tables
+        </button>
       </nav>
 
-      {tab === 'reports' ? (
+      {tab === 'tables' ? (
+        <div className="admin-reports">
+          <FloorEditor demo={demo} flash={flash} />
+        </div>
+      ) : tab === 'reports' ? (
         <div className="admin-reports">
           <div className="admin-head">
             <div>

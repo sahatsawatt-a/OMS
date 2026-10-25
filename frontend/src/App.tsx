@@ -21,7 +21,7 @@ function App() {
       <Route
         path="/admin"
         element={
-          <StaffGate title="Admin">
+          <StaffGate title="Admin" admin>
             <AdminPage />
           </StaffGate>
         }
