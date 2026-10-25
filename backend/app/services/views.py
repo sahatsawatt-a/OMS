@@ -7,20 +7,24 @@ from sqlalchemy.orm import Session
 
 from app.core.clock import to_ms
 from app.models import DiningTable, MenuCategory, MenuItem, OptionGroup, Order, TableSession
+from app.open_photos import OPEN_PHOTOS, open_photo_url
 from app.schemas import (
     CategoryOut,
     DeviceOut,
     GuestSessionOut,
     MenuItemOut,
     MenuOut,
+    OpenPhotoOut,
     OptionGroupOut,
     OrderItemOut,
     OrderOut,
     OrderPaymentOut,
+    PhotoSources,
     SelectedOptionOut,
     SessionOut,
     TableOut,
 )
+from app.services.photo_sources import get_photo_sources, shown_photo
 
 # Orders staff see: pending Stripe checkouts are not orders yet
 VISIBLE_STATUSES = ("awaiting_counter", "paid", "cancelled")
@@ -30,7 +34,18 @@ def group_out(g: OptionGroup) -> OptionGroupOut:
     return OptionGroupOut.model_validate(g)
 
 
-def item_out(m: MenuItem) -> MenuItemOut:
+def item_out(m: MenuItem, sources: PhotoSources | None = None) -> MenuItemOut:
+    """For guests (`sources` given): the photo to show. For staff: the dish's own photo, as
+    saved, and its open-source one, so the admin page edits one and previews both."""
+    if sources is None:
+        image, credit = m.image or None, None
+        open_photo = (
+            OpenPhotoOut(url=open_photo_url(m.id), **OPEN_PHOTOS[m.id].model_dump())
+            if m.id in OPEN_PHOTOS
+            else None
+        )
+    else:
+        (image, credit), open_photo = shown_photo(m, sources), None
     return MenuItemOut(
         id=m.id,
         category_id=m.category_id,
@@ -39,7 +54,9 @@ def item_out(m: MenuItem) -> MenuItemOut:
         name_th=m.name_th or None,
         description=m.description,
         price=m.price,
-        image=m.image or None,
+        image=image,
+        image_credit=credit,
+        open_photo=open_photo,
         recommended=m.recommended or None,
         option_groups=[group_out(g) for g in m.option_groups],
         dietary=list(m.dietary or []),
@@ -55,11 +72,14 @@ def menu_out(db: Session, include_hidden: bool) -> MenuOut:
         q = q.where(MenuItem.hidden.is_(False))
     items = db.scalars(q).all()
     groups = db.scalars(select(OptionGroup).order_by(OptionGroup.sort_order)).all()
+    sources = get_photo_sources(db)
     return MenuOut(
         categories=[CategoryOut.model_validate(c) for c in categories],
-        items=[item_out(m) for m in items],
+        # The staff menu (with hidden dishes) is the one the admin page edits
+        items=[item_out(m, None if include_hidden else sources) for m in items],
         option_groups=[group_out(g) for g in groups],
         sold_out=[m.id for m in items if m.sold_out],
+        photo_sources=sources,
     )
 
 

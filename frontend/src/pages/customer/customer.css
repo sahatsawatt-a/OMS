@@ -294,6 +294,14 @@
   margin-bottom: 8px;
   background: var(--surface-2);
 }
+.photo-credit {
+  margin: -2px 0 8px;
+  font-size: 0.72rem;
+  color: var(--faint);
+}
+.photo-credit a {
+  color: inherit;
+}
 .item-desc {
   margin: 12px 0 0;
 }

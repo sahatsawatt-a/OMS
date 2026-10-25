@@ -7,7 +7,7 @@ import { useEffect, useSyncExternalStore } from 'react'
 import { api, ApiError, currentStaffKey, onStaffKeyChange } from '../lib/api'
 import { onLiveChange } from '../lib/live'
 import { shortId } from './ids'
-import type { CardBrand, CartLine, DemoState, GuestState, ItemStatus, MenuItem, Order, PaymentMethod, TableSession } from './types'
+import type { CardBrand, CartLine, DemoState, GuestState, ItemStatus, MenuItem, Order, PaymentMethod, PhotoSources, TableSession } from './types'
 
 export { randomToken } from './ids'
 
@@ -382,6 +382,11 @@ export const actions = {
   /** Only empty categories can be deleted */
   async deleteCategory(id: string): Promise<boolean> {
     return (await run(() => api(`/menu/categories/${encodeURIComponent(id)}`, { method: 'DELETE', staff: true }))) !== null
+  },
+
+  /** Which photos the guest menu shows */
+  setPhotoSources(sources: PhotoSources) {
+    return run(() => put('/menu/photo-sources', sources))
   },
 
   /** Put the sample menu back (sold-out marks are cleared too) */

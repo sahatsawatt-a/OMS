@@ -45,6 +45,28 @@ class CategoryOut(Model):
     name_th: str | None = None
 
 
+class PhotoCredit(Model):
+    """Who took an open-source photo and its licence (the licence asks for this credit)."""
+
+    author: str
+    license: str
+    license_url: str
+    source: str
+
+
+class OpenPhotoOut(PhotoCredit):
+    url: str
+
+
+class PhotoSources(Model):
+    """Which dish photos the guest menu shows (app/services/photo_sources.py)."""
+
+    # The restaurant's own: cut from the printed menu, or uploaded on the admin page
+    restaurant: bool
+    # From Wikimedia Commons, one for every dish on the printed menu
+    open_source: bool
+
+
 class MenuItemOut(Model):
     id: str
     category_id: str
@@ -53,7 +75,12 @@ class MenuItemOut(Model):
     name_th: str | None = None
     description: str
     price: int
+    # Guest menu: the photo to show. Staff menu: the dish's own photo, as saved.
     image: str | None = None
+    # Guest menu: set when the photo shown is an open-source one
+    image_credit: PhotoCredit | None = None
+    # Staff menu: the open-source photo the dish has, shown when the settings allow
+    open_photo: OpenPhotoOut | None = None
     recommended: bool | None = None
     option_groups: list[OptionGroupOut] = []
     dietary: list[str] = []
@@ -66,6 +93,7 @@ class MenuOut(Model):
     items: list[MenuItemOut]
     option_groups: list[OptionGroupOut]
     sold_out: list[str]
+    photo_sources: PhotoSources
 
 
 class OptionGroupRef(Model):
