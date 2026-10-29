@@ -4,17 +4,22 @@ import { useNow } from '../../components/format'
 import { useMediaQuery } from '../../components/useMediaQuery'
 import { historyForToday } from '../../demo/history'
 import { formatAUD, gstIncluded } from '../../demo/money'
-import type { DemoState } from '../../demo/types'
+import type { DemoState, PaymentMethod } from '../../demo/types'
 import {
   busyReport,
   change,
   combine,
   compareRange,
+  compareValues,
+  filterData,
   financialYears,
   gstReport,
   HOURS,
+  NEWEST_FIRST,
+  NO_FILTER,
   niceStep,
   PAY_TYPE_LABEL,
+  PAYMENT_LABEL,
   paymentsReport,
   PRESETS,
   rangeFor,
@@ -22,6 +27,7 @@ import {
   startOfDay,
   STRIPE_FEE_FIXED,
   STRIPE_FEE_RATE,
+  tableNumbers,
   WEEKDAYS,
   type Bucket,
   type BusyReport,
@@ -31,9 +37,12 @@ import {
   type DishRow,
   type GstRow,
   type HeatCell,
+  type OrderFilter,
+  type PaymentSort,
   type PayTypeFilter,
   type Preset,
   type SalesReport,
+  type SortDir,
 } from './reports'
 import './reports.css'
 
@@ -45,6 +54,9 @@ const compactAUD = (cents: number) => {
   return `$${Math.round(dollars)}`
 }
 const pct = (x: number) => `${Math.round(x * 100)}%`
+// Table cells that read formatted but sort by their value
+const money = (cents: number): Cell => ({ text: formatAUD(cents), sort: cents })
+const share = (x: number): Cell => ({ text: pct(x), sort: x })
 const isoDay = (t: number) => {
   const d = new Date(t)
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
@@ -71,14 +83,23 @@ export default function ReportsView({ state }: { state: DemoState }) {
   const [preset, setPreset] = useState<Preset>('today')
   const [custom, setCustom] = useState(() => ({ from: isoDay(startOfDay(now, -6)), to: isoDay(now) }))
   const [compareMode, setCompareMode] = useState<CompareMode>('previous')
+  const [filter, setFilter] = useState<OrderFilter>(NO_FILTER)
 
   // Generated once per day and cached, so reopening Reports is instant
   const history = historyForToday(now, state.menu.items, state.tables)
-  const data = useMemo(() => combine(state, history), [state, history])
+  const all = useMemo(() => combine(state, history), [state, history])
+  const tables = useMemo(() => tableNumbers(all), [all])
+  // Payments has its own phone/counter and card type filters, so only the table applies there
+  const applied = useMemo<OrderFilter>(() => (section === 'payments' ? { ...filter, via: 'all' } : filter), [filter, section])
+  const data = useMemo(() => filterData(all, applied), [all, applied])
+  const filtered = applied.table !== 'all' || applied.via !== 'all'
 
   const range = rangeFor(preset, now, custom)
   const lastWeekAllowed = range.days <= 7
   const compare = compareRange(range, lastWeekAllowed ? compareMode : 'previous')
+  // What the figures cover, for card subtitles and file names
+  const scope = [range.label, applied.table !== 'all' && `Table ${applied.table}`, applied.via !== 'all' && PAYMENT_LABEL[applied.via]].filter(Boolean).join(' · ')
+  const fileTag = `${applied.table !== 'all' ? `-table-${applied.table}` : ''}${applied.via !== 'all' ? `-${applied.via.replace('_', '-')}` : ''}`
 
   const openSection = (s: Section) => {
     // A weekly pattern needs more than a day of data
@@ -124,6 +145,37 @@ export default function ReportsView({ state }: { state: DemoState }) {
               </label>
             </div>
           )}
+          <div className="report-narrow" role="group" aria-label="Filter">
+            <label className="report-select">
+              <span>Table</span>
+              <select aria-label="Table" value={filter.table} onChange={(e) => setFilter((f) => ({ ...f, table: e.target.value === 'all' ? 'all' : Number(e.target.value) }))}>
+                <option value="all">All tables</option>
+                {tables.map((n) => (
+                  <option key={n} value={n}>
+                    Table {n}
+                  </option>
+                ))}
+              </select>
+            </label>
+            {section !== 'payments' && (
+              <label className="report-select">
+                <span>Paid via</span>
+                <select aria-label="Paid via" value={filter.via} onChange={(e) => setFilter((f) => ({ ...f, via: e.target.value as OrderFilter['via'] }))}>
+                  <option value="all">Any way</option>
+                  {(Object.keys(PAYMENT_LABEL) as PaymentMethod[]).map((m) => (
+                    <option key={m} value={m}>
+                      {PAYMENT_LABEL[m]}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
+            {filtered && (
+              <button className="btn btn-sm btn-ghost" onClick={() => setFilter(NO_FILTER)}>
+                Clear filters
+              </button>
+            )}
+          </div>
           {section === 'sales' && (
             <label className="compare-select">
               <span>Compare with</span>
@@ -138,10 +190,13 @@ export default function ReportsView({ state }: { state: DemoState }) {
         </div>
       )}
 
-      {section === 'sales' && <SalesView report={salesReport(data, range, compare)} rangeLabel={range.label} compareLabel={compare.label} narrow={narrow} now={now} />}
-      {section === 'payments' && <PaymentsView data={data} range={range} rangeLabel={range.label} />}
-      {section === 'busy' && <BusyView report={busyReport(data, range)} rangeLabel={range.label} narrow={narrow} />}
-      {section === 'gst' && <GstView data={data} now={now} />}
+      {section === 'sales' && (
+        <SalesView report={salesReport(data, range, compare)} rangeLabel={scope} compareLabel={compare.label} narrow={narrow} now={now} fileTag={fileTag} />
+      )}
+      {section === 'payments' && <PaymentsView data={data} range={range} rangeLabel={scope} fileTag={fileTag} />}
+      {section === 'busy' && <BusyView report={busyReport(data, range)} rangeLabel={scope} narrow={narrow} />}
+      {/* GST / BAS always covers every order: it is what goes to the accountant */}
+      {section === 'gst' && <GstView data={all} now={now} />}
 
       <p className="muted small reports-note">
         Includes generated sample history for the past year plus today&apos;s demo tables, so the reports have something to show.
@@ -159,13 +214,20 @@ function SalesView({
   compareLabel,
   narrow,
   now,
+  fileTag,
 }: {
   report: SalesReport
   rangeLabel: string
   compareLabel: string
   narrow: boolean
   now: number
+  fileTag: string
 }) {
+  const [dishBy, setDishBy] = useState<DishMetric>('revenue')
+  const [dishCategory, setDishCategory] = useState('all')
+  const categories = report.categories.map((c) => c.name)
+  const category = categories.includes(dishCategory) ? dishCategory : 'all'
+  const dishes = report.dishes.filter((d) => category === 'all' || d.category === category).sort((a, b) => b[dishBy] - a[dishBy])
   const unitTitle = report.bucketUnit === 'hour' ? 'Revenue by hour' : report.bucketUnit === 'day' ? 'Revenue by day' : 'Revenue by month'
   const every = report.bucketUnit === 'hour' ? (narrow ? 3 : 1) : report.bucketUnit === 'day' && report.buckets.length > 14 ? (narrow ? 7 : 5) : 1
   return (
@@ -185,11 +247,11 @@ function SalesView({
         title={unitTitle}
         subtitle={`${rangeLabel} · counted when an order is paid`}
         action={
-          <button className="btn btn-sm btn-outline" onClick={() => download(`ying-thai-2-sales-${isoDay(now)}.csv`, report.csv)} disabled={report.itemsSold === 0}>
+          <button className="btn btn-sm btn-outline" onClick={() => download(`ying-thai-2-sales${fileTag}-${isoDay(now)}.csv`, report.csv)} disabled={report.itemsSold === 0}>
             Download CSV
           </button>
         }
-        table={<DataTable head={['Period', 'Orders', 'Revenue']} rows={report.buckets.map((b) => [b.longLabel, b.orders, formatAUD(b.revenue)])} />}
+        table={<DataTable head={['Period', 'Orders', 'Revenue']} rows={report.buckets.map((b, i) => [{ text: b.longLabel, sort: i }, b.orders, money(b.revenue)])} />}
       >
         <ColumnChart buckets={report.buckets} labelEvery={every} />
       </ChartCard>
@@ -197,17 +259,41 @@ function SalesView({
       <div className="reports-grid">
         <ChartCard
           title="Top dishes"
-          subtitle="By revenue"
-          table={<DataTable head={['Dish', 'Category', 'Sold', 'Revenue']} rows={report.dishes.map((d) => [d.name, d.category, d.qty, formatAUD(d.revenue)])} />}
+          subtitle={`By ${dishBy === 'revenue' ? 'revenue' : 'number sold'}${category === 'all' ? '' : ` · ${category}`}`}
+          action={
+            <>
+              <label className="report-select">
+                <select aria-label="Category" value={category} onChange={(e) => setDishCategory(e.target.value)}>
+                  <option value="all">All categories</option>
+                  {categories.map((c) => (
+                    <option key={c}>{c}</option>
+                  ))}
+                </select>
+              </label>
+              <div className="segmented small-seg" role="group" aria-label="Rank dishes by">
+                {(
+                  [
+                    ['revenue', 'Revenue'],
+                    ['qty', 'Sold'],
+                  ] as const
+                ).map(([id, label]) => (
+                  <button key={id} className={dishBy === id ? 'active' : ''} aria-pressed={dishBy === id} onClick={() => setDishBy(id)}>
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </>
+          }
+          table={<DataTable head={['Dish', 'Category', 'Sold', 'Revenue']} rows={dishes.map((d) => [d.name, d.category, d.qty, money(d.revenue)])} />}
         >
-          <DishBars dishes={report.dishes.slice(0, 8)} />
+          <DishBars dishes={dishes.slice(0, 8)} by={dishBy} />
         </ChartCard>
 
         <div className="reports-col">
           <ChartCard
             title="Payment methods"
             subtitle="Share of revenue"
-            table={<DataTable head={['Method', 'Orders', 'Revenue', 'Share']} rows={report.payments.map((p) => [p.label, p.count, formatAUD(p.amount), pct(p.share)])} />}
+            table={<DataTable head={['Method', 'Orders', 'Revenue', 'Share']} rows={report.payments.map((p) => [p.label, p.count, money(p.amount), share(p.share)])} />}
           >
             <PaymentShare payments={report.payments} />
           </ChartCard>
@@ -219,7 +305,7 @@ function SalesView({
                 <p className="muted small">Items in paid orders</p>
               </div>
             </header>
-            <DataTable head={['Category', 'Items', 'Revenue', 'Share']} rows={report.categories.map((c) => [c.name, c.qty, formatAUD(c.revenue), pct(c.share)])} empty="No sales in this period yet." />
+            <DataTable head={['Category', 'Items', 'Revenue', 'Share']} rows={report.categories.map((c) => [c.name, c.qty, money(c.revenue), share(c.share)])} empty="No sales in this period yet." />
           </section>
 
           <section className="card report-card cancelled-card">
@@ -279,14 +365,27 @@ const PAGE = 100
 const paidAtLabel = (t: number) =>
   new Date(t).toLocaleString('en-AU', { day: 'numeric', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit' })
 
-function PaymentsView({ data, range, rangeLabel }: { data: Data; range: ReturnType<typeof rangeFor>; rangeLabel: string }) {
+// The payment list's columns, in order, and what each sorts by
+const PAYMENT_COLUMNS: { head: string; by: PaymentSort['by'] }[] = [
+  { head: 'Paid at', by: 'paidAt' },
+  { head: 'Order', by: 'number' },
+  { head: 'Table', by: 'table' },
+  { head: 'Paid via', by: 'channel' },
+  { head: 'Card type', by: 'type' },
+  { head: 'Amount', by: 'amount' },
+]
+
+function PaymentsView({ data, range, rangeLabel, fileTag }: { data: Data; range: ReturnType<typeof rangeFor>; rangeLabel: string; fileTag: string }) {
   const [type, setType] = useState<PayTypeFilter>('all')
   const [channel, setChannel] = useState<ChannelFilter>('all')
+  const [order, setOrder] = useState('')
+  const [sort, setSort] = useState<PaymentSort>(NEWEST_FIRST)
   const [shown, setShown] = useState(PAGE)
-  const report = useMemo(() => paymentsReport(data, range, type, channel), [data, range, type, channel])
+  const report = useMemo(() => paymentsReport(data, range, type, channel, order, sort), [data, range, type, channel, order, sort])
   const typeLabel = TYPE_FILTERS.find((f) => f.id === type)!.label
   const lines = report.lines.slice(0, shown)
-  const fileName = `ying-thai-2-payments-${type}-${isoDay(range.start)}-to-${isoDay(range.end - 1)}.csv`
+  const fileName = `ying-thai-2-payments-${type}${fileTag}-${isoDay(range.start)}-to-${isoDay(range.end - 1)}.csv`
+  const sortCol = PAYMENT_COLUMNS.findIndex((c) => c.by === sort.by)
 
   const pick = (next: () => void) => {
     next()
@@ -310,6 +409,10 @@ function PaymentsView({ data, range, rangeLabel }: { data: Data; range: ReturnTy
             </button>
           ))}
         </div>
+        <label className="report-select order-search">
+          <span>Order #</span>
+          <input aria-label="Order #" type="search" inputMode="numeric" placeholder="Any" value={order} onChange={(e) => pick(() => setOrder(e.target.value))} />
+        </label>
       </div>
 
       <div className="kpis three">
@@ -332,8 +435,8 @@ function PaymentsView({ data, range, rangeLabel }: { data: Data; range: ReturnTy
           rows={
             report.summary.length
               ? [
-                  ...report.summary.map((r) => [r.label, r.payments, r.phone, r.counter, formatAUD(r.amount), pct(r.share)]),
-                  ['Total', report.payments, sumOf(report.summary, 'phone'), sumOf(report.summary, 'counter'), formatAUD(report.amount), report.payments ? '100%' : '0%'],
+                  ...report.summary.map((r) => [r.label, r.payments, r.phone, r.counter, money(r.amount), share(r.share)]),
+                  ['Total', report.payments, sumOf(report.summary, 'phone'), sumOf(report.summary, 'counter'), money(report.amount), report.payments ? '100%' : '0%'],
                 ]
               : []
           }
@@ -347,7 +450,8 @@ function PaymentsView({ data, range, rangeLabel }: { data: Data; range: ReturnTy
           <div>
             <h2>Payments</h2>
             <p className="muted small">
-              Newest first · {report.payments.toLocaleString('en-AU')} {report.payments === 1 ? 'payment' : 'payments'}. The CSV has exactly these rows.
+              {report.payments.toLocaleString('en-AU')} {report.payments === 1 ? 'payment' : 'payments'}. Click a column to sort; the CSV has exactly these rows, in
+              this order.
             </p>
           </div>
           <div className="row gap wrap card-actions">
@@ -357,8 +461,18 @@ function PaymentsView({ data, range, rangeLabel }: { data: Data; range: ReturnTy
           </div>
         </header>
         <DataTable
-          head={['Paid at', 'Order', 'Table', 'Paid via', 'Card type', 'Amount']}
-          rows={lines.map((l) => [paidAtLabel(l.paidAt), `#${l.number}`, l.table, l.channel === 'phone' ? 'Phone' : 'Counter', PAY_TYPE_LABEL[l.type], formatAUD(l.amount)])}
+          head={PAYMENT_COLUMNS.map((c) => c.head)}
+          rows={lines.map((l) => [
+            { text: paidAtLabel(l.paidAt), sort: l.paidAt },
+            { text: `#${l.number}`, sort: l.number },
+            l.table,
+            l.channel === 'phone' ? 'Phone' : 'Counter',
+            PAY_TYPE_LABEL[l.type],
+            money(l.amount),
+          ])}
+          // Sorted by the report itself, so the order covers every payment, not only those shown
+          sort={{ col: sortCol, dir: sort.dir }}
+          onSort={(s) => pick(() => setSort({ by: PAYMENT_COLUMNS[s.col].by, dir: s.dir }))}
           empty="No payments match in this period."
         />
         {report.payments > shown && (
@@ -430,6 +544,8 @@ function BusyView({ report, rangeLabel, narrow }: { report: BusyReport; rangeLab
                 return metric === 'orders' ? c.avgOrders.toFixed(1) : compactAUD(Math.round(c.avgRevenue))
               }),
             ])}
+            // A week laid out as a grid: its rows keep the order of the days
+            sortable={false}
           />
         }
       >
@@ -528,7 +644,7 @@ function GstView({ data, now }: { data: Data; now: number }) {
   const [startYear, setStartYear] = useState(years[0].startYear)
   const report = useMemo(() => gstReport(data, startYear, now), [data, startYear, now])
   const head = ['Period', 'Total sales (G1)', 'GST on sales (1A)', 'Sales excl. GST', 'Est. Stripe fees']
-  const row = (r: GstRow) => [`${r.label}${r.partial ? ' *' : ''}`, formatAUD(r.sales), formatAUD(r.gst), formatAUD(r.exGst), formatAUD(r.stripeFees)]
+  const row = (r: GstRow, i: number): Cell[] => [{ text: `${r.label}${r.partial ? ' *' : ''}`, sort: i }, money(r.sales), money(r.gst), money(r.exGst), money(r.stripeFees)]
 
   return (
     <>
@@ -559,7 +675,7 @@ function GstView({ data, now }: { data: Data; now: number }) {
             <p className="muted small">Australian financial year, for the quarterly BAS</p>
           </div>
         </header>
-        <DataTable head={head} rows={[...report.quarters.map(row), row(report.year)]} totalRow />
+        <DataTable head={head} rows={[...report.quarters.map(row), row(report.year, report.quarters.length)]} totalRow />
       </section>
 
       <section className="card report-card">
@@ -638,27 +754,83 @@ function ChartCard({
   )
 }
 
-function DataTable({ head, rows, empty = 'No data for this period.', totalRow = false }: { head: string[]; rows: (string | number)[][]; empty?: string; totalRow?: boolean }) {
+/** A table cell: shown as is, or shown as `text` and sorted by `sort` (money, dates, periods) */
+type Cell = string | number | { text: string; sort: string | number }
+type TableSort = { col: number; dir: SortDir }
+const cellText = (c: Cell) => (typeof c === 'object' ? c.text : c)
+const cellValue = (c: Cell) => (typeof c === 'object' ? c.sort : c)
+
+/**
+ * Click a column heading to sort by it, again to reverse; a total row stays at the bottom. The table
+ * sorts its own rows, unless `onSort` is given: then the caller sorts (all rows, not only those shown).
+ */
+function DataTable({
+  head,
+  rows,
+  empty = 'No data for this period.',
+  totalRow = false,
+  sortable = true,
+  sort,
+  onSort,
+}: {
+  head: string[]
+  rows: Cell[][]
+  empty?: string
+  totalRow?: boolean
+  sortable?: boolean
+  sort?: TableSort
+  onSort?: (s: TableSort) => void
+}) {
+  const [ownSort, setOwnSort] = useState<TableSort | null>(null)
   if (rows.length === 0) return <p className="muted small chart-empty">{empty}</p>
-  const numeric = (c: string | number) => typeof c === 'number' || /^[$\d-]/.test(String(c))
+  const active = onSort ? (sort ?? null) : ownSort
+  const body = totalRow ? rows.slice(0, -1) : rows
+  const total = totalRow ? rows.slice(-1) : []
+  const sorted =
+    active && !onSort
+      ? [...body].sort((a, b) => {
+          const d = compareValues(cellValue(a[active.col]), cellValue(b[active.col]))
+          return active.dir === 'asc' ? d : -d
+        })
+      : body
+  const sortBy = (col: number) => {
+    // Figures start with the largest, words and periods from the top
+    const first: SortDir = col > 0 && typeof cellValue(body[0][col]) === 'number' ? 'desc' : 'asc'
+    const next: TableSort = { col, dir: active?.col === col ? (active.dir === 'asc' ? 'desc' : 'asc') : first }
+    if (onSort) onSort(next)
+    else setOwnSort(next)
+  }
+  const numeric = (c: Cell) => typeof c === 'number' || /^[$\d-]/.test(String(cellText(c)))
+  // Figures line up on the right, heading included; words stay on the left
+  const numCol = head.map((_, i) => i > 0 && numeric(rows[0][i]))
   return (
     <div className="table-wrap">
       <table className="data-table">
         <thead>
           <tr>
-            {head.map((h, i) => (
-              <th key={h} className={i > 0 ? 'num' : ''}>
-                {h}
-              </th>
-            ))}
+            {head.map((h, i) => {
+              const on = active?.col === i
+              return (
+                <th key={h} className={numCol[i] ? 'num' : ''} aria-sort={on ? (active.dir === 'asc' ? 'ascending' : 'descending') : undefined}>
+                  {sortable ? (
+                    <button className={`th-sort ${on ? 'on' : ''}`} onClick={() => sortBy(i)}>
+                      {h}
+                      <Icon name={on && active.dir === 'asc' ? 'chevronUp' : 'chevronDown'} size={12} />
+                    </button>
+                  ) : (
+                    h
+                  )}
+                </th>
+              )
+            })}
           </tr>
         </thead>
         <tbody>
-          {rows.map((r, ri) => (
+          {[...sorted, ...total].map((r, ri) => (
             <tr key={ri} className={totalRow && ri === rows.length - 1 ? 'total-row' : ''}>
               {r.map((c, ci) => (
-                <td key={ci} className={ci > 0 && numeric(c) ? 'num' : ''}>
-                  {c}
+                <td key={ci} className={numCol[ci] ? 'num' : ''}>
+                  {cellText(c)}
                 </td>
               ))}
             </tr>
@@ -728,9 +900,11 @@ function ColumnChart({ buckets, labelEvery }: { buckets: Bucket[]; labelEvery: n
   )
 }
 
-function DishBars({ dishes }: { dishes: DishRow[] }) {
+type DishMetric = 'revenue' | 'qty'
+
+function DishBars({ dishes, by }: { dishes: DishRow[]; by: DishMetric }) {
   if (dishes.length === 0) return <p className="muted small chart-empty">No dishes sold in this period yet.</p>
-  const top = Math.max(...dishes.map((d) => d.revenue))
+  const top = Math.max(...dishes.map((d) => d[by]))
   return (
     <ol className="dishbars">
       {dishes.map((d) => (
@@ -739,10 +913,18 @@ function DishBars({ dishes }: { dishes: DishRow[] }) {
             {d.name}
           </span>
           <span className="dish-track">
-            <span className="dish-bar" style={{ width: `${Math.max(2, (d.revenue / top) * 100)}%` }} />
+            <span className="dish-bar" style={{ width: `${Math.max(2, (d[by] / top) * 100)}%` }} />
           </span>
           <span className="dish-value">
-            {formatAUD(d.revenue)} <span className="muted">· {d.qty} sold</span>
+            {by === 'revenue' ? (
+              <>
+                {formatAUD(d.revenue)} <span className="muted">· {d.qty} sold</span>
+              </>
+            ) : (
+              <>
+                {d.qty} sold <span className="muted">· {formatAUD(d.revenue)}</span>
+              </>
+            )}
           </span>
         </li>
       ))}
