@@ -76,12 +76,35 @@ export const PAYMENT_LABEL: Record<PaymentMethod, string> = {
   cash: 'Counter cash',
 }
 
-export type Data = { orders: Order[]; state: DemoState }
+/** `match` is set when the orders were narrowed by filterData, so live figures can follow it */
+export type Data = { orders: Order[]; state: DemoState; match?: (o: Order) => boolean }
 
 /** History plus the live demo orders, oldest first */
 export function combine(state: DemoState, history: History): Data {
   return { orders: [...history.orders, ...state.orders], state }
 }
+
+// ---------- Filters and sorting ----------
+
+export type OrderFilter = { table: 'all' | number; via: 'all' | PaymentMethod }
+export const NO_FILTER: OrderFilter = { table: 'all', via: 'all' }
+
+/** Only one table's orders and/or one way of paying; every figure is then worked out from those alone */
+export function filterData(data: Data, f: OrderFilter): Data {
+  if (f.table === 'all' && f.via === 'all') return data
+  const match = (o: Order) => (f.table === 'all' || o.tableNumber === f.table) && (f.via === 'all' || o.payment.method === f.via)
+  return { ...data, orders: data.orders.filter(match), match }
+}
+
+/** Every table that has orders or is on the floor plan, for the table filter */
+export const tableNumbers = ({ orders, state }: Data) =>
+  [...new Set([...state.tables.map((t) => t.number), ...orders.map((o) => o.tableNumber)])].sort((a, b) => a - b)
+
+export type SortDir = 'asc' | 'desc'
+
+/** Numbers by size, text in reading order with numbers inside it compared as numbers */
+export const compareValues = (a: string | number, b: string | number) =>
+  typeof a === 'number' && typeof b === 'number' ? a - b : String(a).localeCompare(String(b), 'en-AU', { numeric: true })
 
 const sum = <T,>(list: T[], f: (x: T) => number) => list.reduce((n, x) => n + f(x), 0)
 const paidIn = (orders: Order[], start: number, end: number) =>
@@ -106,6 +129,8 @@ export const payTypeOf = (o: Order): PayType => (o.payment.method === 'cash' ? '
 const channelOf = (o: Order): 'phone' | 'counter' => (o.payment.method === 'stripe' ? 'phone' : 'counter')
 
 export type PaymentLine = { id: string; paidAt: number; number: number; table: number; channel: 'phone' | 'counter'; type: PayType; amount: number }
+export type PaymentSort = { by: 'paidAt' | 'number' | 'table' | 'channel' | 'type' | 'amount'; dir: SortDir }
+export const NEWEST_FIRST: PaymentSort = { by: 'paidAt', dir: 'desc' }
 export type PayTypeRow = { type: PayType; label: string; payments: number; phone: number; counter: number; amount: number; share: number }
 export type PaymentsReport = { lines: PaymentLine[]; summary: PayTypeRow[]; payments: number; amount: number; csv: string }
 
@@ -119,11 +144,24 @@ const csvTime = (t: number) => {
 }
 const dollars = (cents: number) => (cents / 100).toFixed(2)
 
-/** Every payment in the range that matches the filters, newest first, with a summary per type */
-export function paymentsReport({ orders }: Data, range: Range, type: PayTypeFilter, channel: ChannelFilter): PaymentsReport {
+/**
+ * Every payment in the range that matches the filters, in the order asked for (newest first unless
+ * sorted otherwise; ties newest first), with a summary per type. `order` finds order numbers containing it.
+ */
+export function paymentsReport(
+  { orders }: Data,
+  range: Range,
+  type: PayTypeFilter,
+  channel: ChannelFilter,
+  order = '',
+  sort: PaymentSort = NEWEST_FIRST,
+): PaymentsReport {
+  const digits = order.replace(/\D/g, '')
+  const keyOf = (l: PaymentLine) => (sort.by === 'type' ? PAY_TYPE_LABEL[l.type] : l[sort.by])
   const lines: PaymentLine[] = paidIn(orders, range.start, range.end)
     .filter((o) => channel === 'all' || channelOf(o) === channel)
     .filter((o) => matchesType(payTypeOf(o), type))
+    .filter((o) => !digits || String(o.number).includes(digits))
     .map((o) => ({
       id: o.id,
       paidAt: o.payment.paidAt!,
@@ -133,7 +171,10 @@ export function paymentsReport({ orders }: Data, range: Range, type: PayTypeFilt
       type: payTypeOf(o),
       amount: o.payment.amount,
     }))
-    .sort((a, b) => b.paidAt - a.paidAt)
+    .sort((a, b) => {
+      const d = compareValues(keyOf(a), keyOf(b))
+      return (sort.dir === 'asc' ? d : -d) || b.paidAt - a.paidAt
+    })
   const amount = sum(lines, (l) => l.amount)
   const summary = PAY_TYPES.filter((t) => matchesType(t, type))
     .map((t) => {
@@ -192,13 +233,16 @@ export type SalesReport = {
   csv: string
 }
 
-export function salesReport({ orders, state }: Data, range: Range, compare: Range): SalesReport {
+export function salesReport({ orders, state, match }: Data, range: Range, compare: Range): SalesReport {
   const paid = paidIn(orders, range.start, range.end)
   const prevPaid = paidIn(orders, compare.start, compare.end)
   const revenue = sum(paid, (o) => o.payment.amount)
   const prevRevenue = sum(prevPaid, (o) => o.payment.amount)
 
-  const waitingOrders = state.orders.filter((o) => o.payment.status === 'awaiting_counter' && !!o.sessionToken && state.sessions[o.sessionToken]?.status === 'open')
+  // Unpaid orders have no payment method yet, so a "paid via" filter leaves none waiting
+  const waitingOrders = state.orders.filter(
+    (o) => (!match || match(o)) && o.payment.status === 'awaiting_counter' && !!o.sessionToken && state.sessions[o.sessionToken]?.status === 'open',
+  )
   const cancelledOrders = orders.filter(
     (o) => o.payment.status === 'cancelled' && o.payment.cancelledAt! >= range.start && o.payment.cancelledAt! < range.end,
   )

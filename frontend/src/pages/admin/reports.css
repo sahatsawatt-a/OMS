@@ -346,6 +346,33 @@
   text-align: right;
   font-variant-numeric: tabular-nums;
 }
+/* Sortable headings: the arrow shows on the sorted column, faintly on the others */
+.th-sort {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 2px 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+.th-sort svg {
+  opacity: 0;
+  flex-shrink: 0;
+}
+.th-sort:hover svg,
+.th-sort:focus-visible svg {
+  opacity: 0.45;
+}
+.th-sort:hover,
+.th-sort.on {
+  color: var(--text);
+}
+.th-sort.on svg {
+  opacity: 1;
+}
 
 @media (max-width: 1000px) {
   .reports-grid {
@@ -416,7 +443,9 @@
   white-space: nowrap;
 }
 .custom-range,
-.compare-select {
+.compare-select,
+.report-narrow,
+.report-select {
   display: flex;
   align-items: center;
   gap: 10px;
@@ -424,13 +453,19 @@
   color: var(--muted);
 }
 .custom-range label,
-.compare-select {
+.compare-select,
+.report-select {
   display: inline-flex;
   align-items: center;
   gap: 6px;
 }
+.report-narrow {
+  flex-wrap: wrap;
+}
 .custom-range input,
-.compare-select select {
+.compare-select select,
+.report-select select,
+.report-select input {
   min-height: 36px;
   padding: 0 8px;
   border: 1px solid var(--border-strong);
@@ -572,6 +607,10 @@
 }
 .payments-filters .segmented button {
   white-space: nowrap;
+}
+.order-search input {
+  width: 96px;
+  min-height: 34px;
 }
 .kpis.three {
   grid-template-columns: repeat(3, minmax(0, 1fr));
